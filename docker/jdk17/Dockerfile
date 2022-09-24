@@ -9,6 +9,15 @@ RUN JAVA_TOOL_OPTIONS="-Djdk.lang.Process.launchMechanism=vfork" $JAVA_HOME/bin/
          --compress=2 \
          --output /javaruntime
 
+WORKDIR /flyway
+RUN curl -L https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/9.3.1/flyway-commandline-9.3.1.tar.gz -o flyway-commandline-9.3.1.tar.gz \
+      && gzip -d flyway-commandline-9.3.1.tar.gz \
+      && tar -xf flyway-commandline-9.3.1.tar --strip-components=1 \
+      && rm flyway-commandline-9.3.1.tar \
+      && chmod -R a+r /flyway \
+      && chmod a+x /flyway/flyway
+
+
 FROM ubuntu:latest
 ENV JAVA_HOME=/opt/java/openjdk
 ENV PATH "${JAVA_HOME}/bin:${PATH}"
@@ -23,6 +32,7 @@ WORKDIR /opt/web3signer
 
 # copy application (with libraries inside)
 COPY --chown=web3signer:web3signer web3signer /opt/web3signer/
+COPY --from=jre-build --chown=web3signer:web3signer /flyway /opt/flyway/
 
 ENV WEB3SIGNER_HTTP_LISTEN_HOST="0.0.0.0"
 ENV WEB3SIGNER_METRICS_HOST="0.0.0.0"
@@ -32,7 +42,8 @@ ENV WEB3SIGNER_METRICS_HOST="0.0.0.0"
 EXPOSE 9001 9000 9000/udp
 
 # specify default command
-ENTRYPOINT ["/opt/web3signer/bin/web3signer"]
+#ENTRYPOINT ["/opt/web3signer/bin/web3signer"]
+ENTRYPOINT ["/bin/sh", "-c" , "/opt/flyway/flyway migrate -locations=\"filesystem:/opt/web3signer/migrations/postgresql\" && /opt/web3signer/bin/web3signer"]
 
 
 # Build-time metadata as defined at http://label-schema.org
