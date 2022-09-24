@@ -22,6 +22,7 @@ import tech.pegasys.web3signer.core.config.Config;
 import tech.pegasys.web3signer.core.config.TlsOptions;
 import tech.pegasys.web3signer.core.metrics.MetricsEndpoint;
 import tech.pegasys.web3signer.core.metrics.vertx.VertxMetricsAdapterFactory;
+import tech.pegasys.web3signer.core.service.http.AzureAppClientPublicKeyAllowListHandler;
 import tech.pegasys.web3signer.core.service.http.HostAllowListHandler;
 import tech.pegasys.web3signer.core.service.http.SwaggerUIRoute;
 import tech.pegasys.web3signer.core.service.http.handlers.LogErrorHandler;
@@ -150,6 +151,7 @@ public abstract class Runner implements Runnable {
       routerBuilder.rootHandler(BodyHandler.create());
       registerUpcheckRoute(routerBuilder, errorHandler);
       registerHttpHostAllowListHandler(routerBuilder);
+      registerAzureAppClientPublicKeyAllowListHandler(routerBuilder);
 
       healthCheckHandler = HealthCheckHandler.create(vertx);
       routerBuilder
@@ -284,6 +286,10 @@ public abstract class Runner implements Runnable {
     healthCheckHandler.register(name, procedure);
   }
 
+  private void registerAzureAppClientPublicKeyAllowListHandler(final RouterBuilder routerBuilder){
+    routerBuilder.rootHandler(new AzureAppClientPublicKeyAllowListHandler(config.getAzureAppClientPubKeyAllowList()));
+
+  }
   private void registerHttpHostAllowListHandler(final RouterBuilder routerBuilder) {
     routerBuilder.rootHandler(new HostAllowListHandler(config.getHttpHostAllowList()));
   }
