@@ -42,8 +42,7 @@ ENV WEB3SIGNER_METRICS_HOST="0.0.0.0"
 EXPOSE 9001 9000 9000/udp
 
 # specify default command
-#ENTRYPOINT ["/opt/web3signer/bin/web3signer"]
-ENTRYPOINT ["/bin/sh", "-c" , "/opt/flyway/flyway migrate -locations=\"filesystem:/opt/web3signer/migrations/postgresql\" && /opt/web3signer/bin/web3signer"]
+ENTRYPOINT ["/bin/sh", "-c" , "/opt/flyway/flyway migrate -locations=\"filesystem:/opt/web3signer/migrations/postgresql\" && /opt/web3signer/bin/web3signer eth2"]
 
 
 # Build-time metadata as defined at http://label-schema.org
