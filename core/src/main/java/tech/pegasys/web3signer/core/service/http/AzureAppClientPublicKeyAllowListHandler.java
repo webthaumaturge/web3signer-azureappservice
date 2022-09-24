@@ -17,7 +17,7 @@ import static com.google.common.collect.Streams.stream;
 
 public class AzureAppClientPublicKeyAllowListHandler implements Handler<RoutingContext> {
     private static final Logger LOG = LogManager.getLogger();
-    private static final String APP_SERVICE_CLIENT_CERT_HEADER = "X-ARR-ClientCer";
+    private static final String APP_SERVICE_CLIENT_CERT_HEADER = "X-ARR-ClientCert";
     private final List<String> azureAppClientPubKeyAllowList;
 
     public AzureAppClientPublicKeyAllowListHandler(final List<String> azureAppClientPubKeyAllowList) {
@@ -28,7 +28,7 @@ public class AzureAppClientPublicKeyAllowListHandler implements Handler<RoutingC
     public void handle(final RoutingContext event) {
         final Optional<String> clientCertHeader = getAndValidateClientCertHeader(event);
         if (azureAppClientPubKeyAllowList.contains("*")
-                || (clientCertHeader.isPresent() && hostIsInAllowlist(clientCertHeader.get()))) {
+                || (clientCertHeader.isPresent() && clientCertIsInAllowlist(clientCertHeader.get()))) {
             event.next();
         } else {
             final HttpServerResponse response = event.response();
@@ -46,12 +46,12 @@ public class AzureAppClientPublicKeyAllowListHandler implements Handler<RoutingC
         return Optional.ofNullable(event.request().getHeader(APP_SERVICE_CLIENT_CERT_HEADER));
     }
 
-    private boolean hostIsInAllowlist(final String clientCertHeader) {
+    private boolean clientCertIsInAllowlist(final String clientCertHeader) {
         if (azureAppClientPubKeyAllowList.stream()
                 .anyMatch(allowlistEntry -> allowlistEntry.equalsIgnoreCase(clientCertHeader))) {
             return true;
         } else {
-            LOG.trace("Client cert public key not in allowlist: '{}'", clientCertHeader);
+            LOG.info("Client cert public key not in allowlist: '{}'", clientCertHeader);
             return false;
         }
     }
