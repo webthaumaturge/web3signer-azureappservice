@@ -19,6 +19,7 @@ import static tech.pegasys.web3signer.commandline.DefaultCommandValues.MANDATORY
 import static tech.pegasys.web3signer.common.Web3SignerMetricCategory.DEFAULT_METRIC_CATEGORIES;
 
 import tech.pegasys.web3signer.commandline.config.AllowListHostsProperty;
+import tech.pegasys.web3signer.commandline.config.AllowListPublicKeysProperty;
 import tech.pegasys.web3signer.commandline.config.PicoCliTlsServerOptions;
 import tech.pegasys.web3signer.commandline.config.PicoCliTlsServerOptionsValidator;
 import tech.pegasys.web3signer.commandline.convertor.MetricCategoryConverter;
@@ -79,6 +80,14 @@ public class Web3SignerBaseCommand implements Config, Runnable {
       paramLabel = DefaultCommandValues.MANDATORY_PATH_FORMAT_HELP,
       arity = "1")
   private Path dataPath;
+
+  @Option(
+          names = {"--azure-app-client-pubkeyallowlist"},
+          paramLabel = "<publickey>[,<publickey>...]... or * or all",
+          description =
+                  "Comma separated list of Base64 encoded client cert public keys to allow for http access, or * to accept any client (default: ${DEFAULT-VALUE})",
+          defaultValue = "*")
+  private final AllowListPublicKeysProperty azureAppClientPubKeyAllowList = new AllowListPublicKeysProperty();
 
   @Option(
       names = {"--key-store-path"},
@@ -210,6 +219,11 @@ public class Web3SignerBaseCommand implements Config, Runnable {
   @Override
   public Path getDataPath() {
     return dataPath;
+  }
+
+  @Override
+  public AllowListPublicKeysProperty getAzureAppClientPubKeyAllowList() {
+    return azureAppClientPubKeyAllowList;
   }
 
   @Override

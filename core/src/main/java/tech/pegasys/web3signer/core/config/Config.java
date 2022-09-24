@@ -35,6 +35,8 @@ public interface Config {
 
   Path getDataPath();
 
+  List<String> getAzureAppClientPubKeyAllowList();
+
   Path getKeyConfigPath();
 
   Boolean isMetricsEnabled();
