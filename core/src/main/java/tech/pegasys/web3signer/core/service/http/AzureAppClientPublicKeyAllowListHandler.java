@@ -27,7 +27,7 @@ public class AzureAppClientPublicKeyAllowListHandler implements Handler<RoutingC
     @Override
     public void handle(final RoutingContext event) {
         final Optional<String> clientCertHeader = getAndValidateClientCertHeader(event);
-        if (azureAppClientPubKeyAllowList.contains("*")
+        if (event.request().path() == "/healthcheck" || azureAppClientPubKeyAllowList.contains("*")
                 || (clientCertHeader.isPresent() && clientCertIsInAllowlist(clientCertHeader.get()))) {
             event.next();
         } else {
