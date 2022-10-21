@@ -1,12 +1,15 @@
 # Changelog
 
-## Next release
+## 22.10.0
 
 ### Features Added
-- Updated internal Teku libraries to 22.9.0 
+- Log eth2 network configuration on startup [#640](https://github.com/ConsenSys/web3signer/issues/640)
+- Updated internal Teku libraries to 22.10.1
+- Updated HikariCP to 5.0.1
 
 ### Bugs Fixed
-- Upgrade jackson libraries to fix CVE-2022-25857
+- Upgrade jackson libraries to fix CVE-2022-25857, CVE-2022-38751, CVE-2022-38752 and CVE-2022-42003
+- Upgrade protobufs to fix CVE-2022-3171
 
 ## 22.8.1
 ### Features Added
