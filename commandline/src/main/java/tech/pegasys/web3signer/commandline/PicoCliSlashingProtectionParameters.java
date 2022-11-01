@@ -56,19 +56,26 @@ public class PicoCliSlashingProtectionParameters implements SlashingProtectionPa
   private Path dbPoolConfigurationFile = null;
 
   @Option(
+      names = "--slashing-protection-pruning-db-pool-configuration-file",
+      description =
+          "Optional configuration file for Hikari database connection pool used by pruning process.",
+      paramLabel = "<hikari configuration properties file>")
+  private Path pruningDbPoolConfigurationFile = null;
+
+  @Option(
       names = {"--slashing-protection-pruning-enabled"},
       description =
           "Set to true if all Eth2 slashing protection database should be pruned "
               + "(default: ${DEFAULT-VALUE})",
       paramLabel = "<BOOL>",
       arity = "1")
-  boolean pruningEnabled = false;
+  boolean pruningEnabled = true;
 
   @Option(
       names = {"--slashing-protection-pruning-epochs-to-keep"},
       description = "Number of epochs to keep. (default: ${DEFAULT-VALUE})",
       arity = "1")
-  long pruningEpochsToKeep = 10_000;
+  long pruningEpochsToKeep = 250;
 
   @Option(
       names = {"--slashing-protection-pruning-slots-per-epoch"},
@@ -81,16 +88,16 @@ public class PicoCliSlashingProtectionParameters implements SlashingProtectionPa
   @Option(
       names = {"--slashing-protection-pruning-interval"},
       description = "Hours between pruning operations (default: ${DEFAULT-VALUE})")
-  long pruningInterval = 24;
+  long pruningInterval = 12;
 
   @Option(
       names = {"--slashing-protection-pruning-at-boot-enabled"},
       description =
-          "Set to false to disable slashing protection pruning logic at server boot"
+          "Set to true to enable slashing protection pruning logic at server boot"
               + "(default: ${DEFAULT-VALUE})",
       paramLabel = "<BOOL>",
       arity = "1")
-  boolean pruningAtBootEnabled = true;
+  boolean pruningAtBootEnabled = false;
 
   @Option(
       names = {"--slashing-protection-db-health-check-timeout-milliseconds"},
@@ -131,6 +138,11 @@ public class PicoCliSlashingProtectionParameters implements SlashingProtectionPa
   @Override
   public Path getDbPoolConfigurationFile() {
     return dbPoolConfigurationFile;
+  }
+
+  @Override
+  public Path getPruningDbPoolConfigurationFile() {
+    return pruningDbPoolConfigurationFile;
   }
 
   @Override
