@@ -24,6 +24,7 @@ import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParame
 import tech.pegasys.web3signer.core.config.ClientAuthConstraints;
 import tech.pegasys.web3signer.core.config.TlsOptions;
 import tech.pegasys.web3signer.dsl.signer.SignerConfiguration;
+import tech.pegasys.web3signer.dsl.signer.WatermarkRepairParameters;
 import tech.pegasys.web3signer.dsl.utils.DatabaseUtil;
 import tech.pegasys.web3signer.signing.config.AwsSecretsManagerParameters;
 import tech.pegasys.web3signer.signing.config.AzureKeyVaultParameters;
@@ -180,17 +181,14 @@ public class CmdLineParamsDefaultImpl implements CmdLineParamsBuilder {
         params.add("--slashing-protection-db-pool-configuration-file");
         params.add(signerConfig.getSlashingProtectionDbPoolConfigurationFile().toString());
       }
+
+      // enabled by default, explicitly set when false
+      if (!signerConfig.isSlashingProtectionDbConnectionPoolEnabled()) {
+        params.add("--Xslashing-protection-db-connection-pool-enabled=false");
+      }
     }
 
-    if (signerConfig.getSlashingExportPath().isPresent()) {
-      params.add("export");
-      params.add("--to");
-      params.add(signerConfig.getSlashingExportPath().get().toAbsolutePath().toString());
-    } else if (signerConfig.getSlashingImportPath().isPresent()) {
-      params.add("import");
-      params.add("--from");
-      params.add(signerConfig.getSlashingImportPath().get().toAbsolutePath().toString());
-    }
+    params.addAll(createSubCommandArgs());
 
     if (signerConfig.isSlashingProtectionPruningEnabled()) {
       params.add("--slashing-protection-pruning-enabled");
@@ -265,6 +263,34 @@ public class CmdLineParamsDefaultImpl implements CmdLineParamsBuilder {
     if (!awsSecretsManagerParameters.getTagValuesFilter().isEmpty()) {
       params.add(AWS_SECRETS_TAG_VALUES_FILTER_OPTION);
       params.add(String.join(",", awsSecretsManagerParameters.getTagValuesFilter()));
+    }
+
+    return params;
+  }
+
+  private List<String> createSubCommandArgs() {
+    final List<String> params = new ArrayList<>();
+
+    if (signerConfig.getSlashingExportPath().isPresent()) {
+      params.add("export");
+      params.add("--to");
+      params.add(signerConfig.getSlashingExportPath().get().toAbsolutePath().toString());
+    } else if (signerConfig.getSlashingImportPath().isPresent()) {
+      params.add("import");
+      params.add("--from");
+      params.add(signerConfig.getSlashingImportPath().get().toAbsolutePath().toString());
+    } else if (signerConfig.getWatermarkRepairParameters().isPresent()) {
+      final WatermarkRepairParameters watermarkRepairParameters =
+          signerConfig.getWatermarkRepairParameters().get();
+      params.add("watermark-repair");
+      params.add("--epoch");
+      params.add(Long.toString(watermarkRepairParameters.getEpoch()));
+      params.add("--slot");
+      params.add(Long.toString(watermarkRepairParameters.getSlot()));
+      if (!watermarkRepairParameters.getValidators().isEmpty()) {
+        params.add(
+            "--validator-ids" + "=" + String.join(",", watermarkRepairParameters.getValidators()));
+      }
     }
 
     return params;

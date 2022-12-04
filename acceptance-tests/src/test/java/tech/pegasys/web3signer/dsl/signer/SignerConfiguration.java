@@ -48,6 +48,7 @@ public class SignerConfiguration {
   private final Optional<String> slashingProtectionDbUrl;
   private final String slashingProtectionDbUsername;
   private final String slashingProtectionDbPassword;
+  private final boolean slashingProtectionDbConnectionPoolEnabled;
   private final Optional<Path> slashingProtectionDbPoolConfigurationFile;
   private final Optional<Map<String, String>> web3SignerEnvironment;
   private final boolean enableSlashing;
@@ -65,6 +66,7 @@ public class SignerConfiguration {
   private final Optional<Long> bellatrixForkEpoch;
   private final Optional<String> network;
   private final boolean keyManagerApiEnabled;
+  private Optional<WatermarkRepairParameters> watermarkRepairParameters;
   private final Duration startupTimeout;
 
   public SignerConfiguration(
@@ -85,6 +87,7 @@ public class SignerConfiguration {
       final Optional<String> slashingProtectionDbUrl,
       final String slashingProtectionDbUsername,
       final String slashingProtectionDbPassword,
+      final boolean slashingProtectionDbConnectionPoolEnabled,
       final String mode,
       final Optional<Map<String, String>> web3SignerEnvironment,
       final Duration startupTimeout,
@@ -102,7 +105,8 @@ public class SignerConfiguration {
       final Optional<Long> altairForkEpoch,
       final Optional<Long> bellatrixForkEpoch,
       final Optional<String> network,
-      final boolean keyManagerApiEnabled) {
+      final boolean keyManagerApiEnabled,
+      final Optional<WatermarkRepairParameters> watermarkRepairParameters) {
     this.hostname = hostname;
     this.logLevel = logLevel;
     this.httpRpcPort = httpRpcPort;
@@ -120,6 +124,7 @@ public class SignerConfiguration {
     this.slashingProtectionDbUrl = slashingProtectionDbUrl;
     this.slashingProtectionDbUsername = slashingProtectionDbUsername;
     this.slashingProtectionDbPassword = slashingProtectionDbPassword;
+    this.slashingProtectionDbConnectionPoolEnabled = slashingProtectionDbConnectionPoolEnabled;
     this.mode = mode;
     this.web3SignerEnvironment = web3SignerEnvironment;
     this.startupTimeout = startupTimeout;
@@ -138,6 +143,7 @@ public class SignerConfiguration {
     this.bellatrixForkEpoch = bellatrixForkEpoch;
     this.network = network;
     this.keyManagerApiEnabled = keyManagerApiEnabled;
+    this.watermarkRepairParameters = watermarkRepairParameters;
   }
 
   public String hostname() {
@@ -286,5 +292,13 @@ public class SignerConfiguration {
 
   public Duration getStartupTimeout() {
     return startupTimeout;
+  }
+
+  public boolean isSlashingProtectionDbConnectionPoolEnabled() {
+    return slashingProtectionDbConnectionPoolEnabled;
+  }
+
+  public Optional<WatermarkRepairParameters> getWatermarkRepairParameters() {
+    return watermarkRepairParameters;
   }
 }

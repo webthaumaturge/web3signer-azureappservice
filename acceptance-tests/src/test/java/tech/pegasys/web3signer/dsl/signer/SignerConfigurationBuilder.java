@@ -54,6 +54,7 @@ public class SignerConfigurationBuilder {
       Boolean.getBoolean("debugSubProcess") ? Duration.ofHours(1) : Duration.ofSeconds(30);
   private boolean enableSlashing = false;
   private String slashingProtectionDbUrl;
+  private boolean slashingProtectionDbConnectionPoolEnabled = true;
   private Path slashingExportPath;
   private Path slashingImportPath;
   private boolean enableSlashingPruning = false;
@@ -68,6 +69,7 @@ public class SignerConfigurationBuilder {
   private String network = null;
   private boolean keyManagerApiEnabled = false;
   private KeystoresParameters keystoresParameters;
+  private WatermarkRepairParameters watermarkRepairParameters;
 
   public SignerConfigurationBuilder withLogLevel(final Level logLevel) {
     this.logLevel = logLevel;
@@ -166,6 +168,12 @@ public class SignerConfigurationBuilder {
     return this;
   }
 
+  public SignerConfigurationBuilder withSlashingProtectionDbConnectionPoolEnabled(
+      final boolean dbConnectionPoolEnabled) {
+    this.slashingProtectionDbConnectionPoolEnabled = dbConnectionPoolEnabled;
+    return this;
+  }
+
   public SignerConfigurationBuilder withSlashingEnabled(final boolean enableSlashing) {
     this.enableSlashing = enableSlashing;
     return this;
@@ -255,6 +263,11 @@ public class SignerConfigurationBuilder {
     return this;
   }
 
+  public void withWatermarkRepairParameters(
+      final WatermarkRepairParameters watermarkRepairParameters) {
+    this.watermarkRepairParameters = watermarkRepairParameters;
+  }
+
   public SignerConfiguration build() {
     if (mode == null) {
       throw new IllegalArgumentException("Mode cannot be null");
@@ -277,6 +290,7 @@ public class SignerConfigurationBuilder {
         Optional.ofNullable(slashingProtectionDbUrl),
         slashingProtectionDbUsername,
         slashingProtectionDbPassword,
+        slashingProtectionDbConnectionPoolEnabled,
         mode,
         Optional.ofNullable(web3SignerEnvironment),
         startupTimeout,
@@ -294,6 +308,7 @@ public class SignerConfigurationBuilder {
         Optional.ofNullable(altairForkEpoch),
         Optional.ofNullable(bellatrixForkEpoch),
         Optional.ofNullable(network),
-        keyManagerApiEnabled);
+        keyManagerApiEnabled,
+        Optional.ofNullable(watermarkRepairParameters));
   }
 }
