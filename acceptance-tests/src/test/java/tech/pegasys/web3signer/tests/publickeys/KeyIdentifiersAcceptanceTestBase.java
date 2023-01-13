@@ -62,7 +62,7 @@ public class KeyIdentifiersAcceptanceTestBase extends AcceptanceTestBase {
   protected static final String BLS_FC_ADDRESS_2 =
       "f3w3xgslow4fgr5clqa23ew6l4moiiyf6oqbglgkz47ula4xm7xxdkpi4kpmdbhqgts4k5n63qmjav6uulgb4q";
 
-  protected static final MetadataFileHelpers metadataFileHelpers = new MetadataFileHelpers();
+  protected static final MetadataFileHelpers METADATA_FILE_HELPERS = new MetadataFileHelpers();
 
   @TempDir Path testDirectory;
 
@@ -73,7 +73,7 @@ public class KeyIdentifiersAcceptanceTestBase extends AcceptanceTestBase {
   }
 
   protected String[] createKeys(
-      final KeyType keyType, boolean isValid, final String... privateKeys) {
+      final KeyType keyType, final boolean isValid, final String... privateKeys) {
     return keyType == BLS
         ? createBlsKeys(isValid, privateKeys)
         : createSecpKeys(isValid, privateKeys);
@@ -85,7 +85,7 @@ public class KeyIdentifiersAcceptanceTestBase extends AcceptanceTestBase {
         : new String[] {SECP_FC_ADDRESS_1, SECP_FC_ADDRESS_2};
   }
 
-  protected String[] createBlsKeys(boolean isValid, final String... privateKeys) {
+  protected String[] createBlsKeys(final boolean isValid, final String... privateKeys) {
     return Stream.of(privateKeys)
         .map(
             privateKey -> {
@@ -94,7 +94,7 @@ public class KeyIdentifiersAcceptanceTestBase extends AcceptanceTestBase {
               final String publicKey = keyPair.getPublicKey().toString();
               final Path keyConfigFile = testDirectory.resolve(publicKey + ".yaml");
               if (isValid) {
-                metadataFileHelpers.createUnencryptedYamlFileAt(keyConfigFile, privateKey, BLS);
+                METADATA_FILE_HELPERS.createUnencryptedYamlFileAt(keyConfigFile, privateKey, BLS);
               } else {
                 createInvalidFile(keyConfigFile);
               }
@@ -103,7 +103,7 @@ public class KeyIdentifiersAcceptanceTestBase extends AcceptanceTestBase {
         .toArray(String[]::new);
   }
 
-  protected String[] createSecpKeys(boolean isValid, final String... privateKeys) {
+  protected String[] createSecpKeys(final boolean isValid, final String... privateKeys) {
     return Stream.of(privateKeys)
         .map(
             privateKey -> {
@@ -143,7 +143,7 @@ public class KeyIdentifiersAcceptanceTestBase extends AcceptanceTestBase {
       throw new IllegalStateException("Unable to create wallet file", e);
     }
 
-    metadataFileHelpers.createKeyStoreYamlFileAt(
+    METADATA_FILE_HELPERS.createKeyStoreYamlFileAt(
         testDirectory.resolve(publicKey + ".yaml"),
         Path.of(walletFile),
         password,

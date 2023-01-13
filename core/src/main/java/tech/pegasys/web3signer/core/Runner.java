@@ -190,7 +190,7 @@ public abstract class Runner implements Runnable {
     }
   }
 
-  private void createVersionMetric(MetricsSystem metricsSystem) {
+  private void createVersionMetric(final MetricsSystem metricsSystem) {
     metricsSystem
         .createLabelledGauge(
             StandardMetricCategory.PROCESS, "release", "Release information", "version")

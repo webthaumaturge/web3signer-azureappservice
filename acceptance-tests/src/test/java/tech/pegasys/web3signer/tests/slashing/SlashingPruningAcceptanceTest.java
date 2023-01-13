@@ -39,20 +39,20 @@ import org.junit.jupiter.api.io.TempDir;
 
 public class SlashingPruningAcceptanceTest extends AcceptanceTestBase {
 
-  private static final MetadataFileHelpers metadataFileHelpers = new MetadataFileHelpers();
+  private static final MetadataFileHelpers METADATA_FILE_HELPERS = new MetadataFileHelpers();
   public static final String DB_USERNAME = "postgres";
   public static final String DB_PASSWORD = "postgres";
 
   protected final BLSKeyPair keyPair = BLSTestUtil.randomKeyPair(0);
 
   @Test
-  void slashingDataIsPruned(@TempDir Path testDirectory) throws IOException {
+  void slashingDataIsPruned(@TempDir final Path testDirectory) throws IOException {
     final TestDatabaseInfo testDatabaseInfo = DatabaseUtil.create();
     final String dbUrl = testDatabaseInfo.databaseUrl();
     final Jdbi jdbi = testDatabaseInfo.getJdbi();
 
     final Path keyConfigFile = testDirectory.resolve("keyfile.yaml");
-    metadataFileHelpers.createUnencryptedYamlFileAt(
+    METADATA_FILE_HELPERS.createUnencryptedYamlFileAt(
         keyConfigFile, keyPair.getSecretKey().toBytes().toHexString(), KeyType.BLS);
 
     final SignerConfigurationBuilder signerBuilder =

@@ -38,7 +38,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 public class SlashingProtectionAcceptanceTest extends AcceptanceTestBase {
 
-  private static final MetadataFileHelpers metadataFileHelpers = new MetadataFileHelpers();
+  private static final MetadataFileHelpers METADATA_FILE_HELPERS = new MetadataFileHelpers();
   public static final String DB_USERNAME = "postgres";
   public static final String DB_PASSWORD = "postgres";
   protected final BLSKeyPair keyPair = BLSTestUtil.randomKeyPair(0);
@@ -76,7 +76,7 @@ public class SlashingProtectionAcceptanceTest extends AcceptanceTestBase {
             .withKeyStoreDirectory(testDirectory);
 
     final Path keyConfigFile = testDirectory.resolve("keyfile.yaml");
-    metadataFileHelpers.createUnencryptedYamlFileAt(
+    METADATA_FILE_HELPERS.createUnencryptedYamlFileAt(
         keyConfigFile, keyPair.getSecretKey().toBytes().toHexString(), KeyType.BLS);
 
     startSigner(builder.build());
@@ -85,7 +85,8 @@ public class SlashingProtectionAcceptanceTest extends AcceptanceTestBase {
   @ParameterizedTest
   @ValueSource(booleans = {true, false})
   void canSignSameAttestationTwiceWhenSlashingIsEnabled(
-      boolean dbConnectionPoolEnabled, @TempDir Path testDirectory) throws JsonProcessingException {
+      final boolean dbConnectionPoolEnabled, @TempDir final Path testDirectory)
+      throws JsonProcessingException {
 
     setupSigner(testDirectory, true, dbConnectionPoolEnabled);
 
@@ -107,8 +108,8 @@ public class SlashingProtectionAcceptanceTest extends AcceptanceTestBase {
   }
 
   @Test
-  void cannotSignASecondAttestationForSameSlotWithDifferentSigningRoot(@TempDir Path testDirectory)
-      throws JsonProcessingException {
+  void cannotSignASecondAttestationForSameSlotWithDifferentSigningRoot(
+      @TempDir final Path testDirectory) throws JsonProcessingException {
     setupSigner(testDirectory);
 
     final Eth2SigningRequestBody initialRequest = createAttestationRequest(5, 6, UInt64.ZERO);
@@ -133,7 +134,7 @@ public class SlashingProtectionAcceptanceTest extends AcceptanceTestBase {
   }
 
   @Test
-  void cannotSignSurroundedAttestationWhenSlashingEnabled(@TempDir Path testDirectory)
+  void cannotSignSurroundedAttestationWhenSlashingEnabled(@TempDir final Path testDirectory)
       throws JsonProcessingException {
     setupSigner(testDirectory);
 
@@ -151,7 +152,7 @@ public class SlashingProtectionAcceptanceTest extends AcceptanceTestBase {
   }
 
   @Test
-  void cannotSignASurroundingAttestationWhenSlashingEnabled(@TempDir Path testDirectory)
+  void cannotSignASurroundingAttestationWhenSlashingEnabled(@TempDir final Path testDirectory)
       throws JsonProcessingException {
     setupSigner(testDirectory);
 
@@ -169,7 +170,7 @@ public class SlashingProtectionAcceptanceTest extends AcceptanceTestBase {
   }
 
   @Test
-  void canSignSameBlockTwiceWhenSlashingIsEnabled(@TempDir Path testDirectory)
+  void canSignSameBlockTwiceWhenSlashingIsEnabled(@TempDir final Path testDirectory)
       throws JsonProcessingException {
 
     setupSigner(testDirectory);
@@ -192,8 +193,8 @@ public class SlashingProtectionAcceptanceTest extends AcceptanceTestBase {
   }
 
   @Test
-  void signingBlockWithDifferentSigningRootForPreviousSlotFailsWith412(@TempDir Path testDirectory)
-      throws JsonProcessingException {
+  void signingBlockWithDifferentSigningRootForPreviousSlotFailsWith412(
+      @TempDir final Path testDirectory) throws JsonProcessingException {
     setupSigner(testDirectory);
 
     final Eth2SigningRequestBody initialRequest =
