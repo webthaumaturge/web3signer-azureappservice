@@ -83,10 +83,10 @@ dependencyManagement {
       entry 'mockito-junit-jupiter'
     }
 
-    dependency 'org.hyperledger.besu:plugin-api:22.10.0'
-    dependency 'org.hyperledger.besu.internal:metrics-core:22.10.0'
+    dependency 'org.hyperledger.besu:plugin-api:22.10.3'
+    dependency 'org.hyperledger.besu.internal:metrics-core:22.10.3'
 
-    dependencySet(group: 'tech.pegasys.teku.internal', version: '22.12.0') {
+    dependencySet(group: 'tech.pegasys.teku.internal', version: '23.1.1') {
       entry 'bls'
       entry 'spec'
       entry 'serializer'
@@ -99,11 +99,12 @@ dependencyManagement {
 
     dependency 'tech.pegasys:jblst:0.3.8'
 
-    dependencySet(group: 'tech.pegasys.signers.internal', version: '2.2.4') {
+    dependencySet(group: 'tech.pegasys.signers.internal', version: '2.2.5') {
       entry 'bls-keystore'
       entry 'keystorage-hashicorp'
       entry 'keystorage-azure'
       entry 'keystorage-aws'
+      entry 'keystorage-common'
       entry 'keystorage-interlock'
       entry 'keystorage-yubihsm2'
       entry 'signing-secp256k1-api'
@@ -124,7 +125,7 @@ dependencyManagement {
     dependency 'com.azure:azure-identity:1.7.2'
 
     dependency 'com.zaxxer:HikariCP:5.0.1'
-    dependency 'org.postgresql:postgresql:42.5.1'
+    dependency 'org.postgresql:postgresql:42.5.3'
 
     dependencySet(group: 'org.jdbi', version: '3.36.0') {
       entry 'jdbi3-core'
