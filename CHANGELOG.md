@@ -1,11 +1,31 @@
 # Changelog
 
+## Next release
+### Breaking Changes
+- Slashing protection database schema has been updated to support indexes with bigint type and after the upgrade will no longer work with older versions of Web3Signer.
+
+### Features Added
+
+### Bugs fixed
+- Fix issue with slashing protection database failing once reaching max integer index value [#705](https://github.com/ConsenSys/web3signer/issues/705)
+
+---
+## 23.2.1
+### Features Added
+- Add support for Capella milestone in Sepolia
+- Add Block signing support for Capella
+
+### Bugs fixed
+- Upgrade to Vertx 4.3.8 to address CVE-2023-24815
+- Updated docker image with latest libssl3
+
+---
 ## 23.2.0
 ### Features Added
 - AWS Secrets Manager bulkload mode can now load multiple keys from same secret where keys are separated by line terminating 
 character (such as `\n`). [#706](https://github.com/ConsenSys/web3signer/issues/706)
 
-
+---
 ## 23.1.0
 ### Features Added
 - Multiple Signing Key configurations can be specified in single YAML file using triple-dash `---` separator. 
