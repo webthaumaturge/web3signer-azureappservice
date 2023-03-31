@@ -12,6 +12,8 @@
  */
 package tech.pegasys.web3signer.core;
 
+import static tech.pegasys.web3signer.core.config.HealthCheckNames.DEFAULT_CHECK;
+import static tech.pegasys.web3signer.core.config.HealthCheckNames.KEYS_CHECK_UNEXPECTED;
 import static tech.pegasys.web3signer.core.service.http.OpenApiOperationsId.HEALTHCHECK;
 import static tech.pegasys.web3signer.core.service.http.OpenApiOperationsId.UPCHECK;
 
@@ -104,6 +106,8 @@ public abstract class Runner implements Runnable {
 
     final Vertx vertx = Vertx.vertx(createVertxOptions(metricsSystem));
     final LogErrorHandler errorHandler = new LogErrorHandler();
+    healthCheckHandler = HealthCheckHandler.create(vertx);
+
     final ArtifactSignerProvider artifactSignerProvider =
         createArtifactSignerProvider(vertx, metricsSystem);
 
@@ -114,6 +118,8 @@ public abstract class Runner implements Runnable {
         artifactSignerProvider.load().get(); // wait for signers to get loaded ...
       } catch (final InterruptedException | ExecutionException e) {
         LOG.error("Error loading signers", e);
+        registerHealthCheckProcedure(
+            KEYS_CHECK_UNEXPECTED, promise -> promise.complete(Status.KO()));
       }
 
       final OpenApiSpecsExtractor openApiSpecsExtractor =
@@ -153,13 +159,12 @@ public abstract class Runner implements Runnable {
       registerHttpHostAllowListHandler(routerBuilder);
       registerAzureAppClientPublicKeyAllowListHandler(routerBuilder);
 
-      healthCheckHandler = HealthCheckHandler.create(vertx);
       routerBuilder
           .operation(HEALTHCHECK.name())
           .handler(healthCheckHandler)
           .failureHandler(errorHandler);
 
-      registerHealthCheckProcedure("default-check", promise -> promise.complete(Status.OK()));
+      registerHealthCheckProcedure(DEFAULT_CHECK, promise -> promise.complete(Status.OK()));
 
       final Context context =
           new Context(routerBuilder, metricsSystem, errorHandler, vertx, artifactSignerProvider);

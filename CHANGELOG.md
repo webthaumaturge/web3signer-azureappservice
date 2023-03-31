@@ -1,5 +1,20 @@
 # Changelog
+## Upcoming release
+### Features Added
+- Optional Azure bulk loading tags support using cli option `--azure-secrets-tags`.
 
+---
+## 23.3.1
+### Features Added
+- Add support for Capella milestone in Mainnet
+- Enhanced Healthcheck endpoint reporting status of loading of signers keys [#738](https://github.com/ConsenSys/web3signer/pull/738)
+- Optional AWS endpoint overriding for bulk loading `--aws-endpoint-override`. Useful for local testing against localstack. [#730](https://github.com/ConsenSys/web3signer/issues/730)
+
+### Bugs Fixed
+- Update of Azure libraries (transitive via signers library) and manual override to fix CVE-2023-1370
+- Fix issue with some third party libraries not including logs in the web3signer logs due missing slf4j2 library
+
+---
 ## 23.3.0
 ### Breaking Changes
 - Slashing protection database schema has been updated to support indexes with bigint type and after the upgrade will no longer work with older versions of Web3Signer.
