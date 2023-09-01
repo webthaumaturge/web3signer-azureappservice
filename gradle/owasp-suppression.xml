@@ -1,33 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
     <!-- See https://jeremylong.github.io/DependencyCheck/general/suppression.html for examples -->
-
-    <suppress until="2023-04-15">
+    <suppress>
         <notes><![CDATA[
-            Temporarily suppress CVE-2022-1471 till the fix is released. Web3Signer only parses specified yaml files.
-            https://bitbucket.org/snakeyaml/snakeyaml/issues/561/cve-2022-1471-vulnerability-in
+        Suppress CVE-2023-35116 as this is not considered a CVE according to discussion in https://github.com/FasterXML/jackson-databind/issues/3972
         ]]></notes>
-        <cve>CVE-2022-1471</cve>
-    </suppress>
-
-    <suppress until="2023-04-15">
-        <notes><![CDATA[
-        Suppress various improper matches to the CPE that belongs only to pkg:maven/org.json/json. Our code does not
-        use this library.
-        Suppress until a future version of dependency-check plugin solves it.
-        - https://github.com/jeremylong/DependencyCheck/issues/5545
-        ]]></notes>
-        <packageUrl regex="true">^(?!pkg:maven/org\.json/json@).+$</packageUrl>
-        <cpe>cpe:/a:json-java_project:json-java</cpe>
+        <packageUrl regex="true">^pkg:maven/com\.fasterxml\.jackson\.core/jackson\-databind@.*$</packageUrl>
+        <vulnerabilityName>CVE-2023-35116</vulnerabilityName>
     </suppress>
     <suppress>
         <notes><![CDATA[
-        Suppress false positive for CVE-2020-8908 as it is only applicable for versions up to 30.0. We use 31.1.
-            Our code does not use com.google.common.io.Files.createTempDir() as well.
-            - https://nvd.nist.gov/vuln/detail/cve-2020-8908
-            - https://github.com/jeremylong/DependencyCheck/issues/5526
-            - https://github.com/google/guava/issues/4011
+        Suppress CVE-2023-3782 as Web3Signer doesn't use brotli and the NVD is incorrectly applying against all okhttp packages instead of just brotli one. See discussion in https://github.com/square/okhttp/issues/7738
         ]]></notes>
-        <cve>CVE-2020-8908</cve>
+        <packageUrl regex="true">^pkg:maven/com\.squareup\.okhttp3/.*$</packageUrl>
+        <cve>CVE-2023-3782</cve>
     </suppress>
 </suppressions>

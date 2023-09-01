@@ -24,13 +24,14 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 
 @JsonDeserialize(using = AzureSecretSigningMetadataDeserializer.class)
 public class AzureSecretSigningMetadata extends SigningMetadata implements AzureKeyVaultParameters {
-
+  public static final String TYPE = "azure-secret";
   private final String clientId;
   private final String clientSecret;
   private final String tenantId;
   private final String vaultName;
   private final String secretName;
   private final AzureAuthenticationMode authenticationMode;
+  private final long timeout;
 
   public AzureSecretSigningMetadata(
       final String clientId,
@@ -39,8 +40,9 @@ public class AzureSecretSigningMetadata extends SigningMetadata implements Azure
       final String vaultName,
       final String secretName,
       final AzureAuthenticationMode azureAuthenticationMode,
-      final KeyType keyType) {
-    super(keyType != null ? keyType : KeyType.BLS);
+      final KeyType keyType,
+      final long timeout) {
+    super(TYPE, keyType != null ? keyType : KeyType.BLS);
     this.clientId = clientId;
     this.clientSecret = clientSecret;
     this.tenantId = tenantId;
@@ -50,6 +52,7 @@ public class AzureSecretSigningMetadata extends SigningMetadata implements Azure
         azureAuthenticationMode == null
             ? AzureAuthenticationMode.CLIENT_SECRET
             : azureAuthenticationMode;
+    this.timeout = timeout;
   }
 
   @Override
@@ -96,5 +99,10 @@ public class AzureSecretSigningMetadata extends SigningMetadata implements Azure
     // tags support is not applicable for config file mode as
     // user is already providing the secret name to load the secret from.
     return Collections.emptyMap();
+  }
+
+  @Override
+  public long getTimeout() {
+    return timeout;
   }
 }

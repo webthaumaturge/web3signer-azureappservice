@@ -18,13 +18,13 @@ import static tech.pegasys.web3signer.dsl.utils.WaitUtils.waitFor;
 import static tech.pegasys.web3signer.signing.KeyType.BLS;
 import static tech.pegasys.web3signer.tests.keymanager.SlashingProtectionDataChoice.WITHOUT_SLASHING_PROTECTION_DATA;
 
-import tech.pegasys.signers.bls.keystore.KeyStore;
-import tech.pegasys.signers.bls.keystore.KeyStoreLoader;
-import tech.pegasys.signers.bls.keystore.model.KdfFunction;
-import tech.pegasys.signers.bls.keystore.model.KeyStoreData;
 import tech.pegasys.teku.bls.BLSKeyPair;
 import tech.pegasys.teku.bls.BLSPublicKey;
 import tech.pegasys.teku.bls.BLSSecretKey;
+import tech.pegasys.teku.bls.keystore.KeyStore;
+import tech.pegasys.teku.bls.keystore.KeyStoreLoader;
+import tech.pegasys.teku.bls.keystore.model.KdfFunction;
+import tech.pegasys.teku.bls.keystore.model.KeyStoreData;
 import tech.pegasys.web3signer.dsl.signer.Signer;
 import tech.pegasys.web3signer.dsl.signer.SignerConfigurationBuilder;
 import tech.pegasys.web3signer.dsl.utils.MetadataFileHelpers;
@@ -115,13 +115,19 @@ public class KeyManagerTestBase extends AcceptanceTestBase {
         .delete(KEYSTORE_ENDPOINT);
   }
 
-  protected String createBlsKey(final String keystorePath, final String password)
+  protected String createBlsKey(final String keystoreFile, final String password)
       throws URISyntaxException {
-    final Path keystoreFile =
-        Path.of(new File(Resources.getResource(keystorePath).toURI()).getAbsolutePath());
-    final KeyStoreData keyStoreData = KeyStoreLoader.loadFromFile(keystoreFile);
+    return createBlsKey(testDirectory, keystoreFile, password);
+  }
+
+  protected String createBlsKey(
+      final Path signerKeystoreDirectory, final String keystoreFile, final String password)
+      throws URISyntaxException {
+    final Path keystoreFilePath =
+        Path.of(new File(Resources.getResource(keystoreFile).toURI()).getAbsolutePath());
+    final KeyStoreData keyStoreData = KeyStoreLoader.loadFromFile(keystoreFilePath.toUri());
     final Bytes privateKey = KeyStore.decrypt(password, keyStoreData);
-    return createKeystoreYamlFile(privateKey.toHexString());
+    return createKeystoreYamlFile(signerKeystoreDirectory, privateKey.toHexString());
   }
 
   protected void validateApiResponse(
@@ -130,11 +136,15 @@ public class KeyManagerTestBase extends AcceptanceTestBase {
   }
 
   protected String createKeystoreYamlFile(final String privateKey) {
+    return createKeystoreYamlFile(testDirectory, privateKey);
+  }
+
+  protected String createKeystoreYamlFile(final Path keystoreDirectory, final String privateKey) {
     final BLSSecretKey key = BLSSecretKey.fromBytes(Bytes32.fromHexString(privateKey));
     final BLSKeyPair keyPair = new BLSKeyPair(key);
     final BLSPublicKey publicKey = keyPair.getPublicKey();
     final String configFilename = publicKey.toString();
-    final Path keyConfigFile = testDirectory.resolve(configFilename + ".yaml");
+    final Path keyConfigFile = keystoreDirectory.resolve(configFilename + ".yaml");
     METADATA_FILE_HELPERS.createKeyStoreYamlFileAt(keyConfigFile, keyPair, KdfFunction.PBKDF2);
     return publicKey.toString();
   }

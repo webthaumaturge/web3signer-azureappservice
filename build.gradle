@@ -40,8 +40,8 @@ plugins {
   id 'org.ajoberstar.grgit' version '4.1.1'
 }
 
-if (!JavaVersion.current().java11Compatible) {
-  throw new GradleException("Java 11 or later is required to build Web3Signer.\n" +
+if (!JavaVersion.current().isCompatibleWith(JavaVersion.VERSION_17)) {
+  throw new GradleException("Java 17 or later is required to build Web3Signer.\n" +
   "  Detected version ${JavaVersion.current()}")
 }
 
@@ -109,10 +109,11 @@ allprojects {
     from javadoc.destinationDir
   }
 
-  sourceCompatibility = 11
-  targetCompatibility = 11
+  sourceCompatibility = 17
+  targetCompatibility = 17
 
   repositories {
+    // mavenLocal() //for local testing only, uncomment while testing locally build signers.
     mavenCentral()
     maven { url "https://artifacts.consensys.net/public/maven/maven/" }
     maven { url "https://artifacts.consensys.net/public/teku/maven/" }
@@ -461,7 +462,7 @@ tasks.register("dockerDistUntar") {
 }
 
 def dockerImage = "consensys/web3signer"
-def dockerJdkVariants = ["jdk17", "jdk11",]
+def dockerJdkVariants = ["jdk17",]
 def dockerBuildDir = "build/docker-web3signer/"
 
 task distDocker  {
@@ -683,4 +684,17 @@ task cloudsmithUpload {
       args rootProject.version, "${buildDir}/distributions"
     }
   }
+}
+
+def calculateJarName(Project project) {
+  def jarName = project.name
+  def parent = project.parent
+
+  while (parent != null) {
+    if (parent != rootProject) {
+      jarName = parent.name + '-' + jarName
+    }
+    parent = parent.parent
+  }
+  return jarName
 }

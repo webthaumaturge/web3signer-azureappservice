@@ -17,22 +17,12 @@ import static tech.pegasys.web3signer.core.config.HealthCheckNames.KEYS_CHECK_AZ
 import static tech.pegasys.web3signer.core.config.HealthCheckNames.KEYS_CHECK_CONFIG_FILE_LOADING;
 import static tech.pegasys.web3signer.core.config.HealthCheckNames.KEYS_CHECK_KEYSTORE_BULK_LOADING;
 import static tech.pegasys.web3signer.core.config.HealthCheckNames.SLASHING_PROTECTION_DB;
-import static tech.pegasys.web3signer.core.service.http.OpenApiOperationsId.ETH2_LIST;
-import static tech.pegasys.web3signer.core.service.http.OpenApiOperationsId.ETH2_SIGN;
-import static tech.pegasys.web3signer.core.service.http.OpenApiOperationsId.KEYMANAGER_DELETE;
-import static tech.pegasys.web3signer.core.service.http.OpenApiOperationsId.KEYMANAGER_IMPORT;
-import static tech.pegasys.web3signer.core.service.http.OpenApiOperationsId.KEYMANAGER_LIST;
-import static tech.pegasys.web3signer.core.service.http.OpenApiOperationsId.RELOAD;
 import static tech.pegasys.web3signer.signing.KeyType.BLS;
 
-import tech.pegasys.signers.aws.AwsSecretsManagerProvider;
-import tech.pegasys.signers.azure.AzureKeyVault;
-import tech.pegasys.signers.common.MappedResults;
-import tech.pegasys.signers.hashicorp.HashicorpConnectionFactory;
 import tech.pegasys.teku.bls.BLSKeyPair;
 import tech.pegasys.teku.bls.BLSSecretKey;
 import tech.pegasys.teku.spec.Spec;
-import tech.pegasys.web3signer.core.config.Config;
+import tech.pegasys.web3signer.core.config.BaseConfig;
 import tech.pegasys.web3signer.core.metrics.SlashingProtectionMetrics;
 import tech.pegasys.web3signer.core.service.http.SigningObjectMapperFactory;
 import tech.pegasys.web3signer.core.service.http.handlers.LogErrorHandler;
@@ -42,15 +32,19 @@ import tech.pegasys.web3signer.core.service.http.handlers.keymanager.list.ListKe
 import tech.pegasys.web3signer.core.service.http.handlers.signing.SignerForIdentifier;
 import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.Eth2SignForIdentifierHandler;
 import tech.pegasys.web3signer.core.service.http.metrics.HttpApiMetrics;
-import tech.pegasys.web3signer.signing.AWSBulkLoadingArtifactSignerProvider;
+import tech.pegasys.web3signer.keystorage.aws.AwsSecretsManagerProvider;
+import tech.pegasys.web3signer.keystorage.azure.AzureKeyVault;
+import tech.pegasys.web3signer.keystorage.common.MappedResults;
+import tech.pegasys.web3signer.keystorage.hashicorp.HashicorpConnectionFactory;
 import tech.pegasys.web3signer.signing.ArtifactSigner;
 import tech.pegasys.web3signer.signing.ArtifactSignerProvider;
 import tech.pegasys.web3signer.signing.BlsArtifactSignature;
 import tech.pegasys.web3signer.signing.BlsArtifactSigner;
-import tech.pegasys.web3signer.signing.BlsKeystoreBulkLoader;
 import tech.pegasys.web3signer.signing.FileValidatorManager;
 import tech.pegasys.web3signer.signing.KeystoreFileManager;
 import tech.pegasys.web3signer.signing.ValidatorManager;
+import tech.pegasys.web3signer.signing.bulkloading.AWSBulkLoadingArtifactSignerProvider;
+import tech.pegasys.web3signer.signing.bulkloading.BlsKeystoreBulkLoader;
 import tech.pegasys.web3signer.signing.config.AwsSecretsManagerParameters;
 import tech.pegasys.web3signer.signing.config.AzureKeyVaultFactory;
 import tech.pegasys.web3signer.signing.config.AzureKeyVaultParameters;
@@ -72,6 +66,7 @@ import tech.pegasys.web3signer.slashingprotection.SlashingProtectionContextFacto
 import tech.pegasys.web3signer.slashingprotection.SlashingProtectionParameters;
 import tech.pegasys.web3signer.slashingprotection.dao.ValidatorsDao;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executors;
@@ -79,13 +74,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.Lists;
 import io.vertx.core.Vertx;
+import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.healthchecks.Status;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.impl.BlockingHandlerDecorator;
-import io.vertx.ext.web.openapi.RouterBuilder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.tuweni.bytes.Bytes;
@@ -93,6 +87,9 @@ import org.apache.tuweni.bytes.Bytes32;
 import org.hyperledger.besu.plugin.services.MetricsSystem;
 
 public class Eth2Runner extends Runner {
+  public static final String KEYSTORES_PATH = "/eth/v1/keystores";
+  public static final String PUBLIC_KEYS_PATH = "/api/v1/eth2/publicKeys";
+  public static final String SIGN_PATH = "/api/v1/eth2/sign/:identifier";
   private static final Logger LOG = LogManager.getLogger();
 
   private final Optional<SlashingProtectionContext> slashingProtectionContext;
@@ -105,14 +102,14 @@ public class Eth2Runner extends Runner {
   private final boolean isKeyManagerApiEnabled;
 
   public Eth2Runner(
-      final Config config,
+      final BaseConfig baseConfig,
       final SlashingProtectionParameters slashingProtectionParameters,
       final AzureKeyVaultParameters azureKeyVaultParameters,
       final KeystoresParameters keystoresParameters,
       final AwsSecretsManagerParameters awsSecretsManagerParameters,
       final Spec eth2Spec,
       final boolean isKeyManagerApiEnabled) {
-    super(config);
+    super(baseConfig);
     this.slashingProtectionContext = createSlashingProtection(slashingProtectionParameters);
     this.azureKeyVaultParameters = azureKeyVaultParameters;
     this.slashingProtectionParameters = slashingProtectionParameters;
@@ -137,48 +134,29 @@ public class Eth2Runner extends Runner {
   }
 
   @Override
-  protected String getOpenApiSpecResource() {
-    return "eth2/web3signer.yaml";
-  }
-
-  @Override
-  public Router populateRouter(final Context context) {
+  public void populateRouter(final Context context) {
     registerEth2Routes(
-        context.getRouterBuilder(),
+        context.getRouter(),
         context.getArtifactSignerProvider(),
         context.getErrorHandler(),
         context.getMetricsSystem(),
         slashingProtectionContext);
-    return context.getRouterBuilder().createRouter();
   }
 
   private void registerEth2Routes(
-      final RouterBuilder routerBuilder,
+      final Router router,
       final ArtifactSignerProvider blsSignerProvider,
       final LogErrorHandler errorHandler,
       final MetricsSystem metricsSystem,
       final Optional<SlashingProtectionContext> slashingProtectionContext) {
     final ObjectMapper objectMapper = SigningObjectMapperFactory.createObjectMapper();
 
-    // security handler for keymanager endpoints
-    routerBuilder.securityHandler(
-        "bearerAuth",
-        context -> {
-          // TODO Auth token security logic
-          final boolean authorized = true;
-          if (authorized) {
-            context.next();
-          } else {
-            context.response().setStatusCode(401).end("{ message: \"permission denied\" }");
-          }
-        });
-
-    addPublicKeysListHandler(routerBuilder, blsSignerProvider, ETH2_LIST.name(), errorHandler);
+    addPublicKeysListHandler(router, blsSignerProvider, PUBLIC_KEYS_PATH, errorHandler);
 
     final SignerForIdentifier<BlsArtifactSignature> blsSigner =
         new SignerForIdentifier<>(blsSignerProvider, this::formatBlsSignature, BLS);
-    routerBuilder
-        .operation(ETH2_SIGN.name())
+    router
+        .route(HttpMethod.POST, SIGN_PATH)
         .handler(
             new BlockingHandlerDecorator(
                 new Eth2SignForIdentifierHandler(
@@ -191,11 +169,11 @@ public class Eth2Runner extends Runner {
                 false))
         .failureHandler(errorHandler);
 
-    addReloadHandler(routerBuilder, blsSignerProvider, RELOAD.name(), errorHandler);
+    addReloadHandler(router, List.of(blsSignerProvider), errorHandler);
 
     if (isKeyManagerApiEnabled) {
-      routerBuilder
-          .operation(KEYMANAGER_LIST.name())
+      router
+          .route(HttpMethod.GET, KEYSTORES_PATH)
           .handler(
               new BlockingHandlerDecorator(
                   new ListKeystoresHandler(blsSignerProvider, objectMapper), false))
@@ -204,13 +182,13 @@ public class Eth2Runner extends Runner {
       final ValidatorManager validatorManager =
           createValidatorManager(blsSignerProvider, objectMapper);
 
-      routerBuilder
-          .operation(KEYMANAGER_IMPORT.name())
+      router
+          .route(HttpMethod.POST, KEYSTORES_PATH)
           .handler(
               new BlockingHandlerDecorator(
                   new ImportKeystoresHandler(
                       objectMapper,
-                      config.getKeyConfigPath(),
+                      baseConfig.getKeyConfigPath(),
                       slashingProtectionContext.map(
                           SlashingProtectionContext::getSlashingProtection),
                       blsSignerProvider,
@@ -218,8 +196,8 @@ public class Eth2Runner extends Runner {
                   false))
           .failureHandler(errorHandler);
 
-      routerBuilder
-          .operation(KEYMANAGER_DELETE.name())
+      router
+          .route(HttpMethod.DELETE, KEYSTORES_PATH)
           .handler(
               new BlockingHandlerDecorator(
                   new DeleteKeystoresHandler(
@@ -239,8 +217,8 @@ public class Eth2Runner extends Runner {
         new FileValidatorManager(
             artifactSignerProvider,
             new KeystoreFileManager(
-                config.getKeyConfigPath(),
-                YamlMapperFactory.createYamlMapper(config.getKeyStoreConfigFileMaxSize())),
+                baseConfig.getKeyConfigPath(),
+                YamlMapperFactory.createYamlMapper(baseConfig.getKeyStoreConfigFileMaxSize())),
             objectMapper);
     if (slashingProtectionContext.isPresent()) {
       final SlashingProtectionContext slashingProtectionContext =
@@ -260,100 +238,122 @@ public class Eth2Runner extends Runner {
       final Vertx vertx, final MetricsSystem metricsSystem) {
     return new DefaultArtifactSignerProvider(
         () -> {
-          final List<ArtifactSigner> signers = Lists.newArrayList();
-          final HashicorpConnectionFactory hashicorpConnectionFactory =
-              new HashicorpConnectionFactory(vertx);
+          try (final AzureKeyVaultFactory azureKeyVaultFactory = new AzureKeyVaultFactory()) {
+            final List<ArtifactSigner> signers = new ArrayList<>();
+            signers.addAll(
+                loadSignersFromKeyConfigFiles(vertx, azureKeyVaultFactory, metricsSystem)
+                    .getValues());
+            signers.addAll(bulkLoadSigners(azureKeyVaultFactory).getValues());
 
-          try (final InterlockKeyProvider interlockKeyProvider = new InterlockKeyProvider(vertx);
-              final YubiHsmOpaqueDataProvider yubiHsmOpaqueDataProvider =
-                  new YubiHsmOpaqueDataProvider();
-              final AwsSecretsManagerProvider awsSecretsManagerProvider =
-                  new AwsSecretsManagerProvider(
-                      awsSecretsManagerParameters.getCacheMaximumSize())) {
-            final AbstractArtifactSignerFactory artifactSignerFactory =
-                new BlsArtifactSignerFactory(
-                    config.getKeyConfigPath(),
-                    metricsSystem,
-                    hashicorpConnectionFactory,
-                    interlockKeyProvider,
-                    yubiHsmOpaqueDataProvider,
-                    awsSecretsManagerProvider,
-                    (args) ->
-                        new BlsArtifactSigner(args.getKeyPair(), args.getOrigin(), args.getPath()));
+            final List<Bytes> validators =
+                signers.stream()
+                    .map(ArtifactSigner::getIdentifier)
+                    .map(Bytes::fromHexString)
+                    .collect(Collectors.toList());
+            if (validators.isEmpty()) {
+              LOG.warn("No BLS keys loaded. Check that the key store has BLS key config files");
+            } else {
+              slashingProtectionContext.ifPresent(
+                  context -> context.getRegisteredValidators().registerValidators(validators));
+            }
 
-            final MappedResults<ArtifactSigner> results =
-                new SignerLoader()
-                    .load(
-                        config.getKeyConfigPath(),
-                        "yaml",
-                        new YamlSignerParser(
-                            List.of(artifactSignerFactory),
-                            YamlMapperFactory.createYamlMapper(
-                                config.getKeyStoreConfigFileMaxSize())));
-            registerSignerLoadingHealthCheck(KEYS_CHECK_CONFIG_FILE_LOADING, results);
-            signers.addAll(results.getValues());
+            return signers;
           }
-
-          if (azureKeyVaultParameters.isAzureKeyVaultEnabled()) {
-            LOG.info("Bulk loading keys from Azure key vault ... ");
-            final MappedResults<ArtifactSigner> azureResult = loadAzureSigners();
-            LOG.info(
-                "Keys loaded from Azure: [{}], with error count: [{}]",
-                azureResult.getValues().size(),
-                azureResult.getErrorCount());
-            registerSignerLoadingHealthCheck(KEYS_CHECK_AZURE_BULK_LOADING, azureResult);
-            signers.addAll(azureResult.getValues());
-          }
-
-          if (keystoresParameters.isEnabled()) {
-            LOG.info("Bulk loading keys from local keystores ... ");
-            final BlsKeystoreBulkLoader blsKeystoreBulkLoader = new BlsKeystoreBulkLoader();
-            final MappedResults<ArtifactSigner> keystoreSignersResult =
-                keystoresParameters.hasKeystoresPasswordsPath()
-                    ? blsKeystoreBulkLoader.loadKeystoresUsingPasswordDir(
-                        keystoresParameters.getKeystoresPath(),
-                        keystoresParameters.getKeystoresPasswordsPath())
-                    : blsKeystoreBulkLoader.loadKeystoresUsingPasswordFile(
-                        keystoresParameters.getKeystoresPath(),
-                        keystoresParameters.getKeystoresPasswordFile());
-            LOG.info(
-                "Keys loaded from local keystores: [{}], with error count: [{}]",
-                keystoreSignersResult.getValues().size(),
-                keystoreSignersResult.getErrorCount());
-
-            registerSignerLoadingHealthCheck(
-                KEYS_CHECK_KEYSTORE_BULK_LOADING, keystoreSignersResult);
-            signers.addAll(keystoreSignersResult.getValues());
-          }
-
-          if (awsSecretsManagerParameters.isEnabled()) {
-            LOG.info("Bulk loading keys from AWS Secrets Manager ... ");
-            final AWSBulkLoadingArtifactSignerProvider awsBulkLoadingArtifactSignerProvider =
-                new AWSBulkLoadingArtifactSignerProvider();
-
-            final MappedResults<ArtifactSigner> awsResult =
-                awsBulkLoadingArtifactSignerProvider.load(awsSecretsManagerParameters);
-            LOG.info(
-                "Keys loaded from AWS Secrets Manager: [{}], with error count: [{}]",
-                awsResult.getValues().size(),
-                awsResult.getErrorCount());
-            registerSignerLoadingHealthCheck(KEYS_CHECK_AWS_BULK_LOADING, awsResult);
-            signers.addAll(awsResult.getValues());
-          }
-
-          final List<Bytes> validators =
-              signers.stream()
-                  .map(ArtifactSigner::getIdentifier)
-                  .map(Bytes::fromHexString)
-                  .collect(Collectors.toList());
-          if (validators.isEmpty()) {
-            LOG.warn("No BLS keys loaded. Check that the key store has BLS key config files");
-          } else {
-            slashingProtectionContext.ifPresent(
-                context -> context.getRegisteredValidators().registerValidators(validators));
-          }
-          return signers;
         });
+  }
+
+  private MappedResults<ArtifactSigner> loadSignersFromKeyConfigFiles(
+      final Vertx vertx,
+      final AzureKeyVaultFactory azureKeyVaultFactory,
+      final MetricsSystem metricsSystem) {
+    try (final HashicorpConnectionFactory hashicorpConnectionFactory =
+            new HashicorpConnectionFactory();
+        final InterlockKeyProvider interlockKeyProvider = new InterlockKeyProvider(vertx);
+        final YubiHsmOpaqueDataProvider yubiHsmOpaqueDataProvider =
+            new YubiHsmOpaqueDataProvider();
+        final AwsSecretsManagerProvider awsSecretsManagerProvider =
+            new AwsSecretsManagerProvider(awsSecretsManagerParameters.getCacheMaximumSize()); ) {
+      final AbstractArtifactSignerFactory artifactSignerFactory =
+          new BlsArtifactSignerFactory(
+              baseConfig.getKeyConfigPath(),
+              metricsSystem,
+              hashicorpConnectionFactory,
+              interlockKeyProvider,
+              yubiHsmOpaqueDataProvider,
+              awsSecretsManagerProvider,
+              (args) -> new BlsArtifactSigner(args.getKeyPair(), args.getOrigin(), args.getPath()),
+              azureKeyVaultFactory);
+
+      final MappedResults<ArtifactSigner> results =
+          new SignerLoader(baseConfig.keystoreParallelProcessingEnabled())
+              .load(
+                  baseConfig.getKeyConfigPath(),
+                  "yaml",
+                  new YamlSignerParser(
+                      List.of(artifactSignerFactory),
+                      YamlMapperFactory.createYamlMapper(
+                          baseConfig.getKeyStoreConfigFileMaxSize())));
+      registerSignerLoadingHealthCheck(KEYS_CHECK_CONFIG_FILE_LOADING, results);
+
+      return results;
+    }
+  }
+
+  private MappedResults<ArtifactSigner> bulkLoadSigners(
+      final AzureKeyVaultFactory azureKeyVaultFactory) {
+    MappedResults<ArtifactSigner> results = MappedResults.newSetInstance();
+    if (azureKeyVaultParameters.isAzureKeyVaultEnabled()) {
+      LOG.info("Bulk loading keys from Azure key vault ... ");
+      /*
+       Note: Azure supports 25K bytes per secret. https://learn.microsoft.com/en-us/azure/key-vault/secrets/about-secrets
+       Each raw bls private key in hex format is approximately 100 bytes. We should store about 200 or fewer
+       `\n` delimited keys per secret.
+      */
+      final MappedResults<ArtifactSigner> azureResult = loadAzureSigners(azureKeyVaultFactory);
+      LOG.info(
+          "Keys loaded from Azure: [{}], with error count: [{}]",
+          azureResult.getValues().size(),
+          azureResult.getErrorCount());
+      registerSignerLoadingHealthCheck(KEYS_CHECK_AZURE_BULK_LOADING, azureResult);
+      results = MappedResults.merge(results, azureResult);
+    }
+
+    if (keystoresParameters.isEnabled()) {
+      LOG.info("Bulk loading keys from local keystores ... ");
+      final BlsKeystoreBulkLoader blsKeystoreBulkLoader = new BlsKeystoreBulkLoader();
+      final MappedResults<ArtifactSigner> keystoreSignersResult =
+          keystoresParameters.hasKeystoresPasswordsPath()
+              ? blsKeystoreBulkLoader.loadKeystoresUsingPasswordDir(
+                  keystoresParameters.getKeystoresPath(),
+                  keystoresParameters.getKeystoresPasswordsPath())
+              : blsKeystoreBulkLoader.loadKeystoresUsingPasswordFile(
+                  keystoresParameters.getKeystoresPath(),
+                  keystoresParameters.getKeystoresPasswordFile());
+      LOG.info(
+          "Keys loaded from local keystores: [{}], with error count: [{}]",
+          keystoreSignersResult.getValues().size(),
+          keystoreSignersResult.getErrorCount());
+
+      registerSignerLoadingHealthCheck(KEYS_CHECK_KEYSTORE_BULK_LOADING, keystoreSignersResult);
+      results = MappedResults.merge(results, keystoreSignersResult);
+    }
+
+    if (awsSecretsManagerParameters.isEnabled()) {
+      LOG.info("Bulk loading keys from AWS Secrets Manager ... ");
+      final AWSBulkLoadingArtifactSignerProvider awsBulkLoadingArtifactSignerProvider =
+          new AWSBulkLoadingArtifactSignerProvider();
+
+      final MappedResults<ArtifactSigner> awsResult =
+          awsBulkLoadingArtifactSignerProvider.load(awsSecretsManagerParameters);
+      LOG.info(
+          "Keys loaded from AWS Secrets Manager: [{}], with error count: [{}]",
+          awsResult.getValues().size(),
+          awsResult.getErrorCount());
+      registerSignerLoadingHealthCheck(KEYS_CHECK_AWS_BULK_LOADING, awsResult);
+      results = MappedResults.merge(results, awsResult);
+    }
+
+    return results;
   }
 
   private void registerSignerLoadingHealthCheck(
@@ -400,7 +400,7 @@ public class Eth2Runner extends Runner {
     final DbPrunerRunner dbPrunerRunner =
         new DbPrunerRunner(
             slashingProtectionParameters,
-            slashingProtectionContext.get().getSlashingProtection(),
+            slashingProtectionContext.get().getPruner(),
             Executors.newScheduledThreadPool(1));
     if (slashingProtectionParameters.isPruningAtBootEnabled()) {
       dbPrunerRunner.execute();
@@ -408,9 +408,10 @@ public class Eth2Runner extends Runner {
     dbPrunerRunner.schedule();
   }
 
-  final MappedResults<ArtifactSigner> loadAzureSigners() {
+  final MappedResults<ArtifactSigner> loadAzureSigners(
+      final AzureKeyVaultFactory azureKeyVaultFactory) {
     final AzureKeyVault keyVault =
-        AzureKeyVaultFactory.createAzureKeyVault(azureKeyVaultParameters);
+        azureKeyVaultFactory.createAzureKeyVault(azureKeyVaultParameters);
 
     return keyVault.mapSecrets(
         (name, value) -> {
@@ -420,7 +421,10 @@ public class Eth2Runner extends Runner {
                 new BLSKeyPair(BLSSecretKey.fromBytes(Bytes32.wrap(privateKeyBytes)));
             return new BlsArtifactSigner(keyPair, SignerOrigin.AZURE);
           } catch (final Exception e) {
-            LOG.error("Failed to load secret named {} from azure key vault.", name);
+            LOG.error(
+                "Failed to load secret named {} from azure key vault due to: {}.",
+                name,
+                e.getMessage());
             return null;
           }
         },

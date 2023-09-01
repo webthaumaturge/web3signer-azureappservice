@@ -21,6 +21,10 @@ import static tech.pegasys.web3signer.tests.AcceptanceTestBase.JSON_RPC_PATH;
 
 import tech.pegasys.web3signer.core.service.http.SigningObjectMapperFactory;
 import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.Eth2SigningRequestBody;
+import tech.pegasys.web3signer.dsl.Accounts;
+import tech.pegasys.web3signer.dsl.Eth;
+import tech.pegasys.web3signer.dsl.PublicContracts;
+import tech.pegasys.web3signer.dsl.Transactions;
 import tech.pegasys.web3signer.dsl.lotus.FilecoinJsonRpcEndpoint;
 import tech.pegasys.web3signer.dsl.signer.runner.Web3SignerRunner;
 import tech.pegasys.web3signer.dsl.tls.ClientTlsConfig;
@@ -46,6 +50,10 @@ import io.vertx.core.json.JsonObject;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.tuweni.bytes.Bytes;
+import org.web3j.protocol.Web3j;
+import org.web3j.protocol.core.Ethereum;
+import org.web3j.protocol.core.JsonRpc2_0Web3j;
+import org.web3j.protocol.http.HttpService;
 
 public class Signer extends FilecoinJsonRpcEndpoint {
 
@@ -66,9 +74,13 @@ public class Signer extends FilecoinJsonRpcEndpoint {
   private final SignerConfiguration signerConfig;
   private final Web3SignerRunner runner;
   private final String hostname;
+  private Accounts accounts;
+  private PublicContracts publicContracts;
+  private Transactions transactions;
   private final Vertx vertx;
   private final String urlFormatting;
   private final Optional<ClientTlsConfig> clientTlsConfig;
+  private Web3j jsonRpc;
 
   public Signer(final SignerConfiguration signerConfig, final ClientTlsConfig clientTlsConfig) {
     super(JSON_RPC_PATH);
@@ -85,6 +97,11 @@ public class Signer extends FilecoinJsonRpcEndpoint {
     LOG.info("Starting Web3Signer");
     runner.start();
     final String httpUrl = getUrl();
+    jsonRpc = new JsonRpc2_0Web3j(new HttpService(httpUrl));
+    final Eth eth = new Eth(jsonRpc);
+    this.transactions = new Transactions(eth);
+    this.publicContracts = new PublicContracts(eth);
+    this.accounts = new Accounts(eth);
     LOG.info("Http requests being submitted to : {} ", httpUrl);
   }
 
@@ -140,12 +157,19 @@ public class Signer extends FilecoinJsonRpcEndpoint {
       final Eth2SigningRequestBody ethSignBody,
       final ContentType acceptMediaType)
       throws JsonProcessingException {
+    return eth2Sign(
+        publicKey, ETH_2_INTERFACE_OBJECT_MAPPER.writeValueAsString(ethSignBody), acceptMediaType);
+  }
+
+  public Response eth2Sign(
+      final String publicKey, final String jsonBody, final ContentType acceptMediaType)
+      throws JsonProcessingException {
     return given()
         .baseUri(getUrl())
         .contentType(ContentType.JSON)
         .accept(acceptMediaType)
         .pathParam("identifier", publicKey)
-        .body(ETH_2_INTERFACE_OBJECT_MAPPER.writeValueAsString(ethSignBody))
+        .body(jsonBody)
         .log()
         .all(true)
         .post(signPath(BLS));
@@ -189,5 +213,21 @@ public class Signer extends FilecoinJsonRpcEndpoint {
 
   public Response healthcheck() {
     return given().baseUri(getUrl()).get(HEALTHCHECK_ENDPOINT);
+  }
+
+  public Ethereum jsonRpc() {
+    return jsonRpc;
+  }
+
+  public Accounts accounts() {
+    return accounts;
+  }
+
+  public Transactions transactions() {
+    return this.transactions;
+  }
+
+  public PublicContracts publicContracts() {
+    return publicContracts;
   }
 }

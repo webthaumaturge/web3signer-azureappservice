@@ -1,3 +1,4 @@
+import groovy.text.SimpleTemplateEngine
 /*
  * Copyright 2019 ConsenSys AG.
  *
@@ -13,8 +14,8 @@
 
 plugins {
   id "de.undercouch.download" version "4.1.0"
-  id "com.google.osdetector" version "1.6.2"
-  id "io.gatling.gradle" version "3.7.0-M1"
+  id "com.google.osdetector" version "1.7.3"
+  id "io.gatling.gradle" version "3.9.3.1"
 }
 
 dependencies {
@@ -23,6 +24,7 @@ dependencies {
   testImplementation project(":core")
   testImplementation project(":signing")
   testImplementation project(":commandline")
+  testImplementation project(":common")
 
   testImplementation 'org.apache.tuweni:tuweni-bytes'
   testImplementation 'org.apache.tuweni:tuweni-units'
@@ -44,9 +46,8 @@ dependencies {
   testImplementation 'org.assertj:assertj-core'
   testImplementation 'org.awaitility:awaitility'
   testImplementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml'
-  testImplementation 'tech.pegasys.signers.internal:bls-keystore'
-  testImplementation 'tech.pegasys.signers.internal:signing-secp256k1-impl'
   testImplementation 'tech.pegasys.teku.internal:bls'
+  testImplementation 'tech.pegasys.teku.internal:bls-keystore'
   testImplementation 'tech.pegasys.teku.internal:spec'
   testImplementation 'tech.pegasys.teku.internal:networks'
   testImplementation 'tech.pegasys.teku.internal:json'
@@ -59,26 +60,62 @@ dependencies {
   testImplementation 'io.rest-assured:rest-assured'
   testImplementation 'org.web3j:core'
   testImplementation 'org.apache.tuweni:tuweni-bytes'
+  testImplementation 'org.apache.tuweni:tuweni-net'
   testImplementation 'com.github.arteam:simple-json-rpc-server'
   testImplementation 'com.github.arteam:simple-json-rpc-client'
   testImplementation 'org.flywaydb:flyway-core'
   testImplementation 'io.rest-assured:rest-assured'
   testImplementation 'org.jdbi:jdbi3-core'
-  testImplementation (group: 'tech.pegasys.signers.internal', name: 'keystorage-hashicorp', classifier: 'test-fixtures')
-  testImplementation (group: 'tech.pegasys.signers.internal', name: 'acceptance-tests', classifier: 'test-fixtures')
-  testImplementation (group: 'tech.pegasys.signers.internal', name: 'signing-secp256k1-impl', classifier: 'test-fixtures')
+  testImplementation 'org.zeroturnaround:zt-exec'
+  testImplementation 'org.web3j:crypto'
+  testImplementation 'org.web3j:besu'
+  testImplementation (testFixtures(project(":keystorage")))
   testImplementation (testFixtures(project(":slashing-protection")))
   testImplementation (testFixtures(project(":signing")))
   testImplementation enforcedPlatform('io.zonky.test.postgres:embedded-postgres-binaries-bom')
   testImplementation 'io.zonky.test:embedded-postgres'
+  testImplementation 'org.bouncycastle:bcprov-jdk18on'
+
+  testImplementation 'com.azure:azure-identity'
+  testImplementation 'com.azure:azure-security-keyvault-keys'
+  testImplementation 'com.azure:azure-security-keyvault-secrets'
 
   gatlingImplementation configurations.getByName("testImplementation")
 
   implementation 'software.amazon.awssdk:auth'
   implementation 'software.amazon.awssdk:secretsmanager'
+  implementation 'software.amazon.awssdk:kms'
 }
 
 test.enabled = false
+
+task cleanBesuInstall(type: Delete) {
+  delete "$buildDir/besu"
+}
+
+task downloadBesu(type: Download) {
+  src {
+    // see gradle.properties for Besu URL
+    return new SimpleTemplateEngine().createTemplate(besuDistroUrl).make(["besuVersion":"$besuVersion"]).toString()
+  }
+  dest new File(buildDir, "besu-${besuVersion}.tar.gz")
+  onlyIfModified true
+  retries 3
+}
+
+task extractBesu(dependsOn: [
+  'cleanBesuInstall',
+  'downloadBesu'
+], type: Copy) {
+  from(tarTree(downloadBesu.dest)) {
+    include "besu-${besuVersion}/**"
+    eachFile { fcd ->
+      fcd.relativePath = new RelativePath(true, fcd.relativePath.segments.drop(1))
+    }
+    includeEmptyDirs = false
+  }
+  into "$buildDir/besu"
+}
 
 def vaultBinary () {
   switch (osdetector.os) {
@@ -86,6 +123,15 @@ def vaultBinary () {
       return new File(buildDir, "vault.exe").toString()
     default:
       return new File(buildDir, "vault").toString()
+  }
+}
+
+def getOsXArchForVault() {
+  switch(osdetector.arch) {
+    case "aarch_64":
+      "arm64"
+      break
+    default: "amd64"
   }
 }
 
@@ -99,7 +145,7 @@ def vaultDownloadUrl() {
       return "${hashicorpVaultUrl}/${hashicorpVaultVersion}/vault_${hashicorpVaultVersion}_linux_amd64.zip"
       break
     case "osx":
-      return "${hashicorpVaultUrl}/${hashicorpVaultVersion}/vault_${hashicorpVaultVersion}_darwin_amd64.zip"
+      return "${hashicorpVaultUrl}/${hashicorpVaultVersion}/vault_${hashicorpVaultVersion}_darwin_${getOsXArchForVault()}.zip"
       break
   }
 }
@@ -119,6 +165,7 @@ task extractVault(dependsOn: downloadVault, type: Copy) {
 
 task acceptanceTest(dependsOn: [
   rootProject.installDist,
+  extractBesu,
   extractVault
 ], type: Test) {
   inputs.property "integration.date", LocalTime.now() // so it runs at every invocation
@@ -129,6 +176,7 @@ task acceptanceTest(dependsOn: [
 
   //systemProperty 'debugSubProcess', 'true'
   systemProperty 'acctests.runWeb3SignerAsProcess', 'true'
+  systemProperty 'besuInstallDir', "${buildDir}/besu"
   systemProperty 'vaultBinary', vaultBinary()
   // embedded pg initdb needs following
   environment "LC_CTYPE", "en_US.UTF-8"

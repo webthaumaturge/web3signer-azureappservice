@@ -15,6 +15,7 @@ package tech.pegasys.web3signer.signing.config.metadata;
 import tech.pegasys.web3signer.signing.ArtifactSigner;
 import tech.pegasys.web3signer.signing.KeyType;
 
+import java.net.http.HttpClient;
 import java.nio.file.Path;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -22,7 +23,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSetter;
 
 public class HashicorpSigningMetadata extends SigningMetadata {
-
+  public static final String TYPE = "hashicorp";
   private final String serverHost;
   private final String token;
   private final String keyPath;
@@ -34,6 +35,7 @@ public class HashicorpSigningMetadata extends SigningMetadata {
 
   private Boolean tlsEnabled = false;
   private Path tlsKnownServerFile = null;
+  private HttpClient.Version httpProtocolVersion;
 
   @JsonCreator
   public HashicorpSigningMetadata(
@@ -41,7 +43,7 @@ public class HashicorpSigningMetadata extends SigningMetadata {
       @JsonProperty(value = "keyPath", required = true) final String keyPath,
       @JsonProperty(value = "token", required = true) final String token,
       @JsonProperty(value = "keyType") final KeyType keyType) {
-    super(keyType != null ? keyType : KeyType.BLS);
+    super(TYPE, keyType != null ? keyType : KeyType.BLS);
     this.serverHost = serverHost;
     this.token = token;
     this.keyPath = keyPath;
@@ -70,6 +72,11 @@ public class HashicorpSigningMetadata extends SigningMetadata {
   @JsonSetter("tlsKnownServersPath")
   public void setTlsKnownServersPath(final Path value) {
     this.tlsKnownServerFile = value;
+  }
+
+  @JsonSetter("httpProtocolVersion")
+  public void setHttpProtocolVersion(final HttpClient.Version httpProtocolVersion) {
+    this.httpProtocolVersion = httpProtocolVersion;
   }
 
   public String getServerHost() {
@@ -102,6 +109,10 @@ public class HashicorpSigningMetadata extends SigningMetadata {
 
   public Path getTlsKnownServerFile() {
     return tlsKnownServerFile;
+  }
+
+  public HttpClient.Version getHttpProtocolVersion() {
+    return httpProtocolVersion;
   }
 
   @Override

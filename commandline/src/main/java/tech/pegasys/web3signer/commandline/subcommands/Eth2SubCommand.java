@@ -26,12 +26,12 @@ import tech.pegasys.teku.spec.ForkSchedule;
 import tech.pegasys.teku.spec.SpecMilestone;
 import tech.pegasys.teku.spec.networks.Eth2Network;
 import tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParameters;
-import tech.pegasys.web3signer.commandline.PicoCliAzureKeyVaultParameters;
+import tech.pegasys.web3signer.commandline.PicoCliEth2AzureKeyVaultParameters;
 import tech.pegasys.web3signer.commandline.PicoCliSlashingProtectionParameters;
 import tech.pegasys.web3signer.commandline.config.PicoKeystoresParameters;
+import tech.pegasys.web3signer.common.config.AwsAuthenticationMode;
 import tech.pegasys.web3signer.core.Eth2Runner;
 import tech.pegasys.web3signer.core.Runner;
-import tech.pegasys.web3signer.signing.config.AwsAuthenticationMode;
 import tech.pegasys.web3signer.signing.config.KeystoresParameters;
 import tech.pegasys.web3signer.slashingprotection.SlashingProtectionParameters;
 
@@ -117,6 +117,24 @@ public class Eth2SubCommand extends ModeSubCommand {
   private UInt64 capellaForkEpoch;
 
   @CommandLine.Option(
+      names = {"--Xnetwork-deneb-fork-epoch"},
+      hidden = true,
+      paramLabel = "<epoch>",
+      description = "Override the Deneb fork activation epoch.",
+      arity = "1",
+      converter = UInt64Converter.class)
+  private UInt64 denebForkEpoch;
+
+  @CommandLine.Option(
+      names = {"--Xtrusted-setup"},
+      hidden = true,
+      paramLabel = "<STRING>",
+      description =
+          "The trusted setup which is needed for KZG commitments. Only required when creating a custom network. This value should be a file or URL pointing to a trusted setup.",
+      arity = "1")
+  private String trustedSetup = null; // Depends on network configuration
+
+  @CommandLine.Option(
       names = {"--key-manager-api-enabled", "--enable-key-manager-api"},
       paramLabel = "<BOOL>",
       description = "Enable the key manager API to manage key stores (default: ${DEFAULT-VALUE}).",
@@ -124,7 +142,7 @@ public class Eth2SubCommand extends ModeSubCommand {
   private boolean isKeyManagerApiEnabled = false;
 
   @Mixin private PicoCliSlashingProtectionParameters slashingProtectionParameters;
-  @Mixin private PicoCliAzureKeyVaultParameters azureKeyVaultParameters;
+  @Mixin private PicoCliEth2AzureKeyVaultParameters azureKeyVaultParameters;
   @Mixin private PicoKeystoresParameters keystoreParameters;
   @Mixin private PicoCliAwsSecretsManagerParameters awsSecretsManagerParameters;
   private tech.pegasys.teku.spec.Spec eth2Spec;
@@ -181,6 +199,12 @@ public class Eth2SubCommand extends ModeSubCommand {
     }
     if (capellaForkEpoch != null) {
       builder.capellaForkEpoch(capellaForkEpoch);
+    }
+    if (denebForkEpoch != null) {
+      builder.denebForkEpoch(denebForkEpoch);
+    }
+    if (trustedSetup != null) {
+      builder.trustedSetup(trustedSetup);
     }
     return builder.build();
   }

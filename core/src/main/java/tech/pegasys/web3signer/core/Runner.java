@@ -14,33 +14,31 @@ package tech.pegasys.web3signer.core;
 
 import static tech.pegasys.web3signer.core.config.HealthCheckNames.DEFAULT_CHECK;
 import static tech.pegasys.web3signer.core.config.HealthCheckNames.KEYS_CHECK_UNEXPECTED;
-import static tech.pegasys.web3signer.core.service.http.OpenApiOperationsId.HEALTHCHECK;
-import static tech.pegasys.web3signer.core.service.http.OpenApiOperationsId.UPCHECK;
 
-import tech.pegasys.teku.infrastructure.unsigned.UInt64;
 import tech.pegasys.web3signer.common.ApplicationInfo;
+import tech.pegasys.web3signer.core.config.BaseConfig;
 import tech.pegasys.web3signer.core.config.ClientAuthConstraints;
-import tech.pegasys.web3signer.core.config.Config;
+import tech.pegasys.web3signer.core.config.MetricsPushOptions;
 import tech.pegasys.web3signer.core.config.TlsOptions;
-import tech.pegasys.web3signer.core.metrics.MetricsEndpoint;
 import tech.pegasys.web3signer.core.metrics.vertx.VertxMetricsAdapterFactory;
 import tech.pegasys.web3signer.core.service.http.AzureAppClientPublicKeyAllowListHandler;
 import tech.pegasys.web3signer.core.service.http.HostAllowListHandler;
 import tech.pegasys.web3signer.core.service.http.SwaggerUIRoute;
 import tech.pegasys.web3signer.core.service.http.handlers.LogErrorHandler;
 import tech.pegasys.web3signer.core.service.http.handlers.PublicKeysListHandler;
+import tech.pegasys.web3signer.core.service.http.handlers.ReloadHandler;
 import tech.pegasys.web3signer.core.service.http.handlers.UpcheckHandler;
 import tech.pegasys.web3signer.core.util.FileUtil;
-import tech.pegasys.web3signer.core.util.OpenApiSpecsExtractor;
 import tech.pegasys.web3signer.signing.ArtifactSignerProvider;
 
+import java.io.Closeable;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.net.URI;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.NoSuchFileException;
-import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.StringJoiner;
@@ -48,6 +46,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
+import io.netty.handler.codec.http.HttpHeaderValues;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -67,44 +66,48 @@ import io.vertx.ext.web.handler.CorsHandler;
 import io.vertx.ext.web.handler.LoggerFormat;
 import io.vertx.ext.web.handler.LoggerHandler;
 import io.vertx.ext.web.impl.BlockingHandlerDecorator;
-import io.vertx.ext.web.openapi.RouterBuilder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.apache.tuweni.net.tls.VertxTrustOptions;
+import org.hyperledger.besu.metrics.MetricsService;
+import org.hyperledger.besu.metrics.MetricsSystemFactory;
 import org.hyperledger.besu.metrics.StandardMetricCategory;
+import org.hyperledger.besu.metrics.prometheus.MetricsConfiguration;
 import org.hyperledger.besu.plugin.services.MetricsSystem;
 
-public abstract class Runner implements Runnable {
+public abstract class Runner implements Runnable, AutoCloseable {
+  public static final String JSON = HttpHeaderValues.APPLICATION_JSON.toString();
+  public static final String TEXT_PLAIN = HttpHeaderValues.TEXT_PLAIN.toString();
+  public static final String HEALTHCHECK_PATH = "/healthcheck";
+  public static final String UPCHECK_PATH = "/upcheck";
+  public static final String RELOAD_PATH = "/reload";
 
   private static final Logger LOG = LogManager.getLogger();
 
-  protected final Config config;
+  protected final BaseConfig baseConfig;
 
   private HealthCheckHandler healthCheckHandler;
+  private final List<Closeable> closeables = new ArrayList<>();
 
-  protected Runner(final Config config) {
-    this.config = config;
+  protected Runner(final BaseConfig baseConfig) {
+    this.baseConfig = baseConfig;
   }
 
   @Override
   public void run() {
-    if (config.getLogLevel() != null) {
-      System.out.println("Setting logging level to " + config.getLogLevel().name());
-      Configurator.setRootLevel(config.getLogLevel());
+    if (baseConfig.getLogLevel() != null) {
+      System.out.println("Setting logging level to " + baseConfig.getLogLevel().name());
+      Configurator.setRootLevel(baseConfig.getLogLevel());
     }
 
-    final MetricsEndpoint metricsEndpoint =
-        new MetricsEndpoint(
-            config.isMetricsEnabled(),
-            config.getMetricsPort(),
-            config.getMetricsNetworkInterface(),
-            config.getMetricCategories(),
-            config.getMetricsHostAllowList());
-
-    final MetricsSystem metricsSystem = metricsEndpoint.getMetricsSystem();
+    final MetricsConfiguration metricsConfiguration = createMetricsConfiguration();
+    final MetricsSystem metricsSystem = MetricsSystemFactory.create(metricsConfiguration);
+    Optional<MetricsService> metricsService = Optional.empty();
 
     final Vertx vertx = Vertx.vertx(createVertxOptions(metricsSystem));
+    final Router router = Router.router(vertx);
+
     final LogErrorHandler errorHandler = new LogErrorHandler();
     healthCheckHandler = HealthCheckHandler.create(vertx);
 
@@ -113,7 +116,8 @@ public abstract class Runner implements Runnable {
 
     try {
       createVersionMetric(metricsSystem);
-      metricsEndpoint.start(vertx);
+      metricsService = MetricsService.create(vertx, metricsConfiguration, metricsSystem);
+      metricsService.ifPresent(MetricsService::start);
       try {
         artifactSignerProvider.load().get(); // wait for signers to get loaded ...
       } catch (final InterruptedException | ExecutionException e) {
@@ -122,76 +126,86 @@ public abstract class Runner implements Runnable {
             KEYS_CHECK_UNEXPECTED, promise -> promise.complete(Status.KO()));
       }
 
-      final OpenApiSpecsExtractor openApiSpecsExtractor =
-          new OpenApiSpecsExtractor.OpenApiSpecsExtractorBuilder()
-              .withConvertRelativeRefToAbsoluteRef(true)
-              .withForceDeleteOnJvmExit(true)
-              .build();
-      final Path openApiSpec =
-          openApiSpecsExtractor
-              .getSpecFilePathAtDestination(getOpenApiSpecResource())
-              .orElseThrow(
-                  () ->
-                      new RuntimeException(
-                          "Unable to load OpenApi spec " + getOpenApiSpecResource()));
-      // vertx needs a scheme present (file://) to determine this is an absolute path
-      final URI openApiSpecUri = openApiSpec.toUri();
-      final RouterBuilder routerBuilder = getRouterBuilder(vertx, openApiSpecUri.toString());
       // register access log handler first
-      if (config.isAccessLogsEnabled()) {
-        routerBuilder.rootHandler(LoggerHandler.create(LoggerFormat.DEFAULT));
+      if (baseConfig.isAccessLogsEnabled()) {
+        router.route().handler(LoggerHandler.create(LoggerFormat.DEFAULT));
       }
 
-      routerBuilder.rootHandler(
-          CorsHandler.create(buildCorsRegexFromConfig())
-              .allowedHeader("*")
-              .allowedMethod(HttpMethod.GET)
-              .allowedMethod(HttpMethod.POST)
-              .allowedMethod(HttpMethod.DELETE)
-              .allowedMethod(HttpMethod.OPTIONS));
+      router
+          .route()
+          .handler(
+              CorsHandler.create()
+                  .addRelativeOrigin(buildCorsRegexFromConfig())
+                  .allowedHeader("*")
+                  .allowedMethod(HttpMethod.GET)
+                  .allowedMethod(HttpMethod.POST)
+                  .allowedMethod(HttpMethod.DELETE)
+                  .allowedMethod(HttpMethod.OPTIONS));
+      registerHttpHostAllowListHandler(router);
+      registerAzureAppClientPublicKeyAllowListHandler(router);
 
       /*
        Add our own instance of BodyHandler as the default BodyHandler doesn't seem to handle large json bodies.
        BodyHandler must be first handler after platform and security handlers
       */
-      routerBuilder.rootHandler(BodyHandler.create());
-      registerUpcheckRoute(routerBuilder, errorHandler);
-      registerHttpHostAllowListHandler(routerBuilder);
-      registerAzureAppClientPublicKeyAllowListHandler(routerBuilder);
+      router.route().handler(BodyHandler.create());
+      registerUpcheckRoute(router, errorHandler);
 
-      routerBuilder
-          .operation(HEALTHCHECK.name())
+      router
+          .route(HttpMethod.GET, HEALTHCHECK_PATH)
           .handler(healthCheckHandler)
           .failureHandler(errorHandler);
 
       registerHealthCheckProcedure(DEFAULT_CHECK, promise -> promise.complete(Status.OK()));
 
       final Context context =
-          new Context(routerBuilder, metricsSystem, errorHandler, vertx, artifactSignerProvider);
+          new Context(router, metricsSystem, errorHandler, vertx, artifactSignerProvider);
 
-      final Router router = populateRouter(context);
-      if (config.isSwaggerUIEnabled()) {
+      populateRouter(context);
+      if (baseConfig.isSwaggerUIEnabled()) {
         new SwaggerUIRoute(router).register();
       }
 
       final HttpServer httpServer = createServerAndWait(vertx, router);
-      final String tlsStatus = config.getTlsOptions().isPresent() ? "enabled" : "disabled";
+      final String tlsStatus = baseConfig.getTlsOptions().isPresent() ? "enabled" : "disabled";
       LOG.info(
           "Web3Signer has started with TLS {}, and ready to handle signing requests on {}:{}",
           tlsStatus,
-          config.getHttpListenHost(),
+          baseConfig.getHttpListenHost(),
           httpServer.actualPort());
 
-      persistPortInformation(httpServer.actualPort(), metricsEndpoint.getPort());
-    } catch (final InitializationException e) {
-      throw e;
+      persistPortInformation(
+          httpServer.actualPort(), metricsService.flatMap(MetricsService::getPort));
     } catch (final Throwable e) {
       if (artifactSignerProvider != null) {
         artifactSignerProvider.close();
       }
       vertx.close();
-      metricsEndpoint.stop();
+      metricsService.ifPresent(MetricsService::stop);
       LOG.error("Failed to initialise application", e);
+      throw new InitializationException(e);
+    }
+  }
+
+  private MetricsConfiguration createMetricsConfiguration() {
+    if (baseConfig.getMetricsPushOptions().isPresent()) {
+      MetricsPushOptions options = baseConfig.getMetricsPushOptions().get();
+      return MetricsConfiguration.builder()
+          .metricCategories(baseConfig.getMetricCategories())
+          .pushEnabled(options.isMetricsPushEnabled())
+          .pushHost(options.getMetricsPushHost())
+          .pushPort(options.getMetricsPushPort())
+          .pushInterval(options.getMetricsPushIntervalSeconds())
+          .prometheusJob(options.getMetricsPrometheusJob())
+          .build();
+    } else {
+      return MetricsConfiguration.builder()
+          .enabled(baseConfig.isMetricsEnabled())
+          .port(baseConfig.getMetricsPort())
+          .host(baseConfig.getMetricsNetworkInterface())
+          .metricCategories(baseConfig.getMetricCategories())
+          .hostsAllowlist(baseConfig.getMetricsHostAllowList())
+          .build();
     }
   }
 
@@ -213,75 +227,36 @@ public abstract class Runner implements Runnable {
   protected abstract ArtifactSignerProvider createArtifactSignerProvider(
       final Vertx vertx, final MetricsSystem metricsSystem);
 
-  protected abstract Router populateRouter(final Context context);
-
-  protected abstract String getOpenApiSpecResource();
-
-  public static RouterBuilder getRouterBuilder(final Vertx vertx, final String specUrl)
-      throws InterruptedException, ExecutionException {
-    final CompletableFuture<RouterBuilder> completableFuture = new CompletableFuture<>();
-    RouterBuilder.create(
-        vertx,
-        specUrl,
-        ar -> {
-          if (ar.succeeded()) {
-            completableFuture.complete(ar.result());
-          } else {
-            completableFuture.completeExceptionally(ar.cause());
-          }
-        });
-
-    final RouterBuilder routerBuilder = completableFuture.get();
-
-    // disable automatic response content handler as it doesn't handle some corner cases.
-    // Our handlers must set content type header manually.
-    routerBuilder.getOptions().setMountResponseContentTypeHandler(false);
-    // vertx-json-schema fails to createRouter for unknown string type formats
-    routerBuilder.getSchemaParser().withStringFormatValidator("uint64", Runner::validateUInt64);
-    return routerBuilder;
-  }
-
-  private static boolean validateUInt64(final String value) {
-    try {
-      UInt64.valueOf(value);
-      return true;
-    } catch (RuntimeException e) {
-      LOG.warn("Validation failed for uint64 value: {}", value);
-      return false;
-    }
-  }
+  protected abstract void populateRouter(final Context context);
 
   protected void addPublicKeysListHandler(
-      final RouterBuilder routerBuilder,
+      final Router router,
       final ArtifactSignerProvider artifactSignerProvider,
-      final String operationId,
+      final String path,
       final LogErrorHandler errorHandler) {
-    routerBuilder
-        .operation(operationId)
+    router
+        .route(HttpMethod.GET, path)
+        .produces(JSON)
         .handler(
             new BlockingHandlerDecorator(new PublicKeysListHandler(artifactSignerProvider), false))
         .failureHandler(errorHandler);
   }
 
   protected void addReloadHandler(
-      final RouterBuilder routerBuilder,
-      final ArtifactSignerProvider artifactSignerProvider,
-      final String operationId,
+      final Router router,
+      final List<ArtifactSignerProvider> orderedArtifactSignerProviders,
       final LogErrorHandler errorHandler) {
-    routerBuilder
-        .operation(operationId)
-        .handler(
-            routingContext -> {
-              artifactSignerProvider.load();
-              routingContext.response().setStatusCode(200).end();
-            })
+    router
+        .route(HttpMethod.POST, RELOAD_PATH)
+        .produces(JSON)
+        .handler(new ReloadHandler(orderedArtifactSignerProviders))
         .failureHandler(errorHandler);
   }
 
-  private void registerUpcheckRoute(
-      final RouterBuilder routerBuilder, final LogErrorHandler errorHandler) {
-    routerBuilder
-        .operation(UPCHECK.name())
+  private void registerUpcheckRoute(final Router router, final LogErrorHandler errorHandler) {
+    router
+        .route(HttpMethod.GET, UPCHECK_PATH)
+        .produces(TEXT_PLAIN)
         .handler(new BlockingHandlerDecorator(new UpcheckHandler(), false))
         .failureHandler(errorHandler);
   }
@@ -291,12 +266,13 @@ public abstract class Runner implements Runnable {
     healthCheckHandler.register(name, procedure);
   }
 
-  private void registerAzureAppClientPublicKeyAllowListHandler(final RouterBuilder routerBuilder){
-    routerBuilder.rootHandler(new AzureAppClientPublicKeyAllowListHandler(config.getAzureAppClientPubKeyAllowList()));
+  private void registerAzureAppClientPublicKeyAllowListHandler(final Router router){
+    router.route().handler(new AzureAppClientPublicKeyAllowListHandler(baseConfig.getAzureAppClientPubKeyAllowList()));
 
   }
-  private void registerHttpHostAllowListHandler(final RouterBuilder routerBuilder) {
-    routerBuilder.rootHandler(new HostAllowListHandler(config.getHttpHostAllowList()));
+
+  private void registerHttpHostAllowListHandler(final Router router) {
+    router.route().handler(new HostAllowListHandler(baseConfig.getHttpHostAllowList()));
   }
 
   private HttpServer createServerAndWait(
@@ -304,9 +280,9 @@ public abstract class Runner implements Runnable {
       throws ExecutionException, InterruptedException {
     final HttpServerOptions serverOptions =
         new HttpServerOptions()
-            .setPort(config.getHttpListenPort())
-            .setHost(config.getHttpListenHost())
-            .setIdleTimeout(config.getIdleConnectionTimeoutSeconds())
+            .setPort(baseConfig.getHttpListenPort())
+            .setHost(baseConfig.getHttpListenHost())
+            .setIdleTimeout(baseConfig.getIdleConnectionTimeoutSeconds())
             .setIdleTimeoutUnit(TimeUnit.SECONDS)
             .setReuseAddress(true)
             .setReusePort(true);
@@ -330,13 +306,13 @@ public abstract class Runner implements Runnable {
 
   private HttpServerOptions applyConfigTlsSettingsTo(final HttpServerOptions input) {
 
-    if (config.getTlsOptions().isEmpty()) {
+    if (baseConfig.getTlsOptions().isEmpty()) {
       return input;
     }
 
     HttpServerOptions result = new HttpServerOptions(input);
     result.setSsl(true);
-    final TlsOptions tlsConfig = config.getTlsOptions().get();
+    final TlsOptions tlsConfig = baseConfig.getTlsOptions().get();
 
     result = applyTlsKeyStore(result, tlsConfig);
 
@@ -390,11 +366,11 @@ public abstract class Runner implements Runnable {
   }
 
   private void persistPortInformation(final int httpPort, final Optional<Integer> metricsPort) {
-    if (config.getDataPath() == null) {
+    if (baseConfig.getDataPath() == null) {
       return;
     }
 
-    final File portsFile = new File(config.getDataPath().toFile(), "web3signer.ports");
+    final File portsFile = new File(baseConfig.getDataPath().toFile(), "web3signer.ports");
     portsFile.deleteOnExit();
 
     final Properties properties = new Properties();
@@ -416,15 +392,32 @@ public abstract class Runner implements Runnable {
   }
 
   private String buildCorsRegexFromConfig() {
-    if (config.getCorsAllowedOrigins().isEmpty()) {
+    if (baseConfig.getCorsAllowedOrigins().isEmpty()) {
       return "";
     }
-    if (config.getCorsAllowedOrigins().contains("*")) {
+    if (baseConfig.getCorsAllowedOrigins().contains("*")) {
       return ".*";
     } else {
       final StringJoiner stringJoiner = new StringJoiner("|");
-      config.getCorsAllowedOrigins().stream().filter(s -> !s.isEmpty()).forEach(stringJoiner::add);
+      baseConfig.getCorsAllowedOrigins().stream()
+          .filter(s -> !s.isEmpty())
+          .forEach(stringJoiner::add);
       return stringJoiner.toString();
+    }
+  }
+
+  protected void registerClose(final Closeable closeable) {
+    closeables.add(closeable);
+  }
+
+  @Override
+  public void close() throws Exception {
+    for (Closeable closeable : closeables) {
+      try {
+        closeable.close();
+      } catch (Exception e) {
+        LOG.error("Failed to close Runner resource", e);
+      }
     }
   }
 }

@@ -56,7 +56,7 @@ public class PruningIntegrationTest extends IntegrationTestBase {
     final List<SignedAttestation> allAttestations = fetchAttestations(1);
     final List<SignedBlock> allBlocks = fetchBlocks(1);
 
-    slashingProtectionContext.getSlashingProtection().prune();
+    slashingProtectionContext.getPruner().prune();
 
     final List<SignedAttestation> expectedAttestations =
         allAttestations.subList(expectedLowestPopulatedEpoch, size);
@@ -70,7 +70,8 @@ public class PruningIntegrationTest extends IntegrationTestBase {
     assertThat(blocks).usingFieldByFieldElementComparator().isEqualTo(expectedBlocks);
 
     assertThat(getWatermark(1))
-        .isEqualToComparingFieldByField(
+        .usingRecursiveComparison()
+        .isEqualTo(
             new SigningWatermark(
                 1,
                 UInt64.valueOf(expectedLowestPopulatedSlot),
@@ -88,7 +89,7 @@ public class PruningIntegrationTest extends IntegrationTestBase {
     insertValidatorAndCreateSlashingData(
         slashingProtectionContext.getRegisteredValidators(), 2, 2, 2);
 
-    slashingProtectionContext.getSlashingProtection().prune();
+    slashingProtectionContext.getPruner().prune();
 
     final List<SignedAttestation> attestationsForValidator1 = fetchAttestations(1);
     assertThat(attestationsForValidator1).hasSize(2);
@@ -109,7 +110,7 @@ public class PruningIntegrationTest extends IntegrationTestBase {
           lowWatermarkDao.updateSlotWatermarkFor(h, 1, UInt64.valueOf(8));
           lowWatermarkDao.updateEpochWatermarksFor(h, 1, UInt64.valueOf(8), UInt64.valueOf(8));
         });
-    slashingProtectionContext.getSlashingProtection().prune();
+    slashingProtectionContext.getPruner().prune();
 
     // we are only able to prune 2 entries because the watermark is at 8
     assertThat(fetchAttestations(1)).hasSize(2);
@@ -130,7 +131,7 @@ public class PruningIntegrationTest extends IntegrationTestBase {
       insertAttestationAt(UInt64.valueOf(i), UInt64.valueOf(i), 1);
     }
 
-    slashingProtectionContext.getSlashingProtection().prune();
+    slashingProtectionContext.getPruner().prune();
     assertThat(fetchAttestations(1)).hasSize(5);
     assertThat(fetchBlocks(1)).hasSize(5);
   }
@@ -156,7 +157,7 @@ public class PruningIntegrationTest extends IntegrationTestBase {
           lowWatermarkDao.updateEpochWatermarksFor(h, 1, UInt64.ZERO, UInt64.ZERO);
         });
 
-    slashingProtectionContext.getSlashingProtection().prune();
+    slashingProtectionContext.getPruner().prune();
 
     assertThat(fetchAttestations(1)).hasSize(2);
     assertThat(fetchBlocks(1)).hasSize(2);
@@ -184,7 +185,7 @@ public class PruningIntegrationTest extends IntegrationTestBase {
           lowWatermarkDao.updateEpochWatermarksFor(h, 1, UInt64.ZERO, UInt64.ZERO);
         });
 
-    slashingProtectionContext.getSlashingProtection().prune();
+    slashingProtectionContext.getPruner().prune();
 
     assertThat(fetchAttestations(1)).hasSize(1);
     assertThat(fetchBlocks(1)).hasSize(1);

@@ -1,7 +1,73 @@
 # Changelog
-## Upcoming release
+
+## Next Release
+
+### Breaking Changes
+- Eth2 Signing request body: deprecating `signingRoot` in favor of `signing_root` property. `signingRoot` will be removed in a future release.
+
+### Features Added
+- Signing support for BlobSidecar and BlindedBlobSidecar in Deneb fork.
+- Add `--azure-response-timeout` to allow request response timeout to be configurable, the field `timeout` is also accepted in the Azure metadata file. [#888](https://github.com/Consensys/web3signer/pull/888)
+
+### Bugs fixed
+- Upcheck was using application/json accept headers instead text/plain accept headers
+
+## 23.8.1
+
+### Bugs fixed
+- Update grpc library to version 1.57.2 to fix CVE-2023-33953
+
+## 23.8.0
+
+### Breaking Changes
+- Use Java 17 for build and runtime. Remove Java 11 variant of docker image. zip/tar.gz distributions will require Java 17 or above to run Web3Signer.
+- Eth2 Azure command line option --azure-secrets-tags is now deprecated and is replaced with --azure-tags. The --azure-secrets-tags option will be removed in a future release.
+
+- 
+### Features Added
+- Add support for SECP256K1 remote signing using AWS Key Management Service. [#501](https://github.com/Consensys/web3signer/issues/501)
+- Azure bulk mode support for loading multiline (`\n` delimited, up to 200) keys per secret.
+- Hashicorp connection properties can now override http protocol to HTTP/1.1 from the default of HTTP/2. [#817](https://github.com/ConsenSys/web3signer/pull/817)
+- Add --key-config-path as preferred alias to --key-store-path [#826](https://github.com/Consensys/web3signer/pull/826)
+- Add eth_signTransaction RPC method under the eth1 subcommand [#822](https://github.com/ConsenSys/web3signer/pull/822)
+- Add eth_sendTransaction RPC method under the eth1 subcommand [#835](https://github.com/Consensys/web3signer/pull/835)
+- Add EIP-1559 support for eth1 public transactions for eth_sendTransaction and eth_signTransaction [#836](https://github.com/Consensys/web3signer/pull/836)
+- Add Azure bulk loading for secp256k1 keys in eth1 mode [#850](https://github.com/Consensys/web3signer/pull/850)
+- Added Gnosis configuration for the 🦉 CAPELLA 🦉 network fork due at epoch 648704, UTC Tue 01/08/2023, 11:34:20 [#865](https://github.com/Consensys/web3signer/pull/865)
+- Java 17 for build and runtime. [#870](https://github.com/Consensys/web3signer/pull/870)
+- Update internal teku library to 23.8.0 [#876](https://github.com/Consensys/web3signer/pull/876)
+- Add support for [Lukso network](https://lukso.network/) `--network=lukso`
+- Deprecate `signingRoot` while currently supporting both `signingRoot` and `signing_root` in Eth2 signing request body.  
+
+### Bugs fixed
+- Support long name aliases in environment variables and YAML configuration [#825](https://github.com/Consensys/web3signer/pull/825)
+
+---
+## 23.6.0
+
+As part of our ongoing commitment to deliver the best remote signing solutions, we are announcing a change in our product offerings.
+
+We have decided to deprecate our [EthSigner](https://github.com/Consensys/EthSigner) product to focus our efforts on enhancing Web3Signer, our newly comprehensive remote signing solution. This is rooted in our strategy to streamline our offerings and focus on a single, robust product that will provide functionality for both transaction and Ethereum validator signing. We hope this makes it applicable to all your use-cases like public Ethereum signing, staking infrastructure offerings, and in private network contexts.
+
+Rest assured, we are not dropping existing EthSigner functionality. We are updating Web3Signer to incorporate the functionalities of EthSigner alongside everything else in Web3Signer. We will ensure a smooth transition by maintaining EthSigner with necessary patches for an additional six months. We hope this provides ample time for any necessary migration to Web3Signer.
+
+**We have begun adding EthSigner functionality to Web3Signer. This is a work in progress and not complete.**  
+
 ### Features Added
 - Optional Azure bulk loading tags support using cli option `--azure-secrets-tags`.
+- Support Prometheus Push Gateway Metrics [#796](https://github.com/ConsenSys/web3signer/pull/796)
+- Cache Genesis Validators Root (GVR) in-memory on first database lookup. This would eliminate further database lookups 
+for GVR during sign operations and improve their performance. [#600](https://github.com/ConsenSys/web3signer/issues/600)
+- Add RPC proxy support to execution client under the eth1 subcommand [#775](https://github.com/ConsenSys/web3signer/pull/775)
+- Add eth_accounts RPC method under the eth1 subcommand [#784](https://github.com/ConsenSys/web3signer/pull/784)
+
+### Bugs Fixed
+- Upgrade jackson and vertx to upgrade snakeyaml to 2.0 to fix CVE-2022-1471
+- Fixed handling of very large number (30,000+) of signing metadata files with Hashicorp connection by introducing 
+experimental flag to disable parallel processing `--Xmetadata-files-parallel-processing-enabled`. 
+[#794](https://github.com/ConsenSys/web3signer/pull/794)
+- Fixed startup error with web3signer where openAPI spec cannot be loaded [#772](https://github.com/ConsenSys/web3signer/issues/772)
+- Removed unmaintained and out-of-date helm chart [#802](https://github.com/ConsenSys/web3signer/pull/802)
 
 ---
 ## 23.3.1

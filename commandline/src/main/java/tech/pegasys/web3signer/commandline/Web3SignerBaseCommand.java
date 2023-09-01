@@ -13,18 +13,20 @@
 package tech.pegasys.web3signer.commandline;
 
 import static tech.pegasys.web3signer.commandline.DefaultCommandValues.CONFIG_FILE_OPTION_NAME;
-import static tech.pegasys.web3signer.commandline.DefaultCommandValues.MANDATORY_FILE_FORMAT_HELP;
-import static tech.pegasys.web3signer.commandline.DefaultCommandValues.MANDATORY_HOST_FORMAT_HELP;
-import static tech.pegasys.web3signer.commandline.DefaultCommandValues.MANDATORY_PORT_FORMAT_HELP;
+import static tech.pegasys.web3signer.commandline.DefaultCommandValues.FILE_FORMAT_HELP;
+import static tech.pegasys.web3signer.commandline.DefaultCommandValues.HOST_FORMAT_HELP;
+import static tech.pegasys.web3signer.commandline.DefaultCommandValues.PORT_FORMAT_HELP;
 import static tech.pegasys.web3signer.common.Web3SignerMetricCategory.DEFAULT_METRIC_CATEGORIES;
 
 import tech.pegasys.web3signer.commandline.config.AllowListHostsProperty;
 import tech.pegasys.web3signer.commandline.config.AllowListPublicKeysProperty;
+import tech.pegasys.web3signer.commandline.config.PicoCliMetricsPushOptions;
 import tech.pegasys.web3signer.commandline.config.PicoCliTlsServerOptions;
 import tech.pegasys.web3signer.commandline.config.PicoCliTlsServerOptionsValidator;
 import tech.pegasys.web3signer.commandline.convertor.MetricCategoryConverter;
 import tech.pegasys.web3signer.common.Web3SignerMetricCategory;
-import tech.pegasys.web3signer.core.config.Config;
+import tech.pegasys.web3signer.core.config.BaseConfig;
+import tech.pegasys.web3signer.core.config.MetricsPushOptions;
 import tech.pegasys.web3signer.core.config.TlsOptions;
 
 import java.io.File;
@@ -63,7 +65,7 @@ import picocli.CommandLine.Spec;
     footerHeading = "%n",
     subcommands = {HelpCommand.class},
     footer = "Web3Signer is licensed under the Apache License 2.0")
-public class Web3SignerBaseCommand implements Config, Runnable {
+public class Web3SignerBaseCommand implements BaseConfig, Runnable {
 
   @Spec private CommandLine.Model.CommandSpec spec; // injected by picocli
   public static final String KEY_STORE_CONFIG_FILE_SIZE_OPTION_NAME =
@@ -72,14 +74,14 @@ public class Web3SignerBaseCommand implements Config, Runnable {
   @SuppressWarnings("UnusedVariable")
   @CommandLine.Option(
       names = {CONFIG_FILE_OPTION_NAME},
-      paramLabel = MANDATORY_FILE_FORMAT_HELP,
+      paramLabel = FILE_FORMAT_HELP,
       description = "Config file in yaml format (default: none)")
   private final File configFile = null;
 
   @Option(
       names = {"--data-path"},
       description = "The path to a directory to store temporary files",
-      paramLabel = DefaultCommandValues.MANDATORY_PATH_FORMAT_HELP,
+      paramLabel = DefaultCommandValues.PATH_FORMAT_HELP,
       arity = "1")
   private Path dataPath;
 
@@ -92,9 +94,9 @@ public class Web3SignerBaseCommand implements Config, Runnable {
   private final AllowListPublicKeysProperty azureAppClientPubKeyAllowList = new AllowListPublicKeysProperty();
 
   @Option(
-      names = {"--key-store-path"},
+      names = {"--key-config-path", "--key-store-path"},
       description = "The path to a directory storing yaml files defining available keys",
-      paramLabel = DefaultCommandValues.MANDATORY_PATH_FORMAT_HELP,
+      paramLabel = DefaultCommandValues.PATH_FORMAT_HELP,
       arity = "1")
   private Path keyStorePath = Path.of("./");
 
@@ -118,14 +120,14 @@ public class Web3SignerBaseCommand implements Config, Runnable {
   @Option(
       names = {"--http-listen-host"},
       description = "Host for HTTP to listen on (default: ${DEFAULT-VALUE})",
-      paramLabel = MANDATORY_HOST_FORMAT_HELP,
+      paramLabel = HOST_FORMAT_HELP,
       arity = "1")
   private String httpListenHost = InetAddress.getLoopbackAddress().getHostAddress();
 
   @Option(
       names = {"--http-listen-port"},
       description = "Port for HTTP to listen on (default: ${DEFAULT-VALUE})",
-      paramLabel = MANDATORY_PORT_FORMAT_HELP,
+      paramLabel = PORT_FORMAT_HELP,
       arity = "1")
   private final Integer httpListenPort = 9000;
 
@@ -152,14 +154,14 @@ public class Web3SignerBaseCommand implements Config, Runnable {
   @SuppressWarnings({"FieldCanBeFinal", "FieldMayBeFinal"}) // PicoCLI requires non-final Strings.
   @Option(
       names = {"--metrics-host"},
-      paramLabel = MANDATORY_HOST_FORMAT_HELP,
+      paramLabel = HOST_FORMAT_HELP,
       description = "Host for the metrics exporter to listen on (default: ${DEFAULT-VALUE})",
       arity = "1")
   private String metricsHost = InetAddress.getLoopbackAddress().getHostAddress();
 
   @Option(
       names = {"--metrics-port"},
-      paramLabel = MANDATORY_PORT_FORMAT_HELP,
+      paramLabel = PORT_FORMAT_HELP,
       description = "Port for the metrics exporter to listen on (default: ${DEFAULT-VALUE})",
       arity = "1")
   private final Integer metricsPort = 9001;
@@ -182,6 +184,8 @@ public class Web3SignerBaseCommand implements Config, Runnable {
       defaultValue = "localhost,127.0.0.1")
   private final AllowListHostsProperty metricsHostAllowList = new AllowListHostsProperty();
 
+  @CommandLine.Mixin private PicoCliMetricsPushOptions metricsPushOptions;
+
   @Option(
       names = {"--idle-connection-timeout-seconds"},
       paramLabel = "<timeout in seconds>",
@@ -199,6 +203,14 @@ public class Web3SignerBaseCommand implements Config, Runnable {
       names = {"--access-logs-enabled"},
       description = "Enable access logs (default: ${DEFAULT-VALUE})")
   private final Boolean accessLogsEnabled = false;
+
+  @Option(
+      names = "--Xkey-store-parallel-processing-enabled",
+      description = "Set to false to disable parallel processing of key stores.",
+      paramLabel = "<BOOL>",
+      arity = "1",
+      hidden = true)
+  private boolean keystoreParallelProcessingEnabled = true;
 
   @CommandLine.Mixin private PicoCliTlsServerOptions picoCliTlsServerOptions;
 
@@ -273,6 +285,14 @@ public class Web3SignerBaseCommand implements Config, Runnable {
   }
 
   @Override
+  public Optional<MetricsPushOptions> getMetricsPushOptions() {
+    if (metricsPushOptions.isMetricsPushEnabled()) {
+      return Optional.of(metricsPushOptions);
+    }
+    return Optional.empty();
+  }
+
+  @Override
   public Optional<TlsOptions> getTlsOptions() {
     if (picoCliTlsServerOptions.getKeyStoreFile() != null
         && picoCliTlsServerOptions.getKeyStorePasswordFile() != null) {
@@ -294,6 +314,11 @@ public class Web3SignerBaseCommand implements Config, Runnable {
   @Override
   public Boolean isAccessLogsEnabled() {
     return accessLogsEnabled;
+  }
+
+  @Override
+  public boolean keystoreParallelProcessingEnabled() {
+    return keystoreParallelProcessingEnabled;
   }
 
   @Override
@@ -335,6 +360,13 @@ public class Web3SignerBaseCommand implements Config, Runnable {
     final PicoCliTlsServerOptionsValidator picoCliTlsServerOptionsValidator =
         new PicoCliTlsServerOptionsValidator(spec, picoCliTlsServerOptions);
     picoCliTlsServerOptionsValidator.validate();
+
+    if (isMetricsEnabled() && metricsPushOptions.isMetricsPushEnabled()) {
+      throw new CommandLine.MutuallyExclusiveArgsException(
+          spec.commandLine(),
+          "--metrics-enabled option and --metrics-push-enabled option can't be used at the same "
+              + "time.  Please refer to CLI reference for more details about this constraint.");
+    }
   }
 
   public static class Web3signerMetricCategoryConverter extends MetricCategoryConverter {

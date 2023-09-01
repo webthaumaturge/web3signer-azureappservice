@@ -25,11 +25,12 @@ import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParame
 import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParameters.AWS_SECRETS_TAG_VALUES_FILTER_OPTION;
 
 import tech.pegasys.web3signer.commandline.subcommands.Eth2SubCommand;
+import tech.pegasys.web3signer.common.config.AwsAuthenticationMode;
 import tech.pegasys.web3signer.core.Context;
 import tech.pegasys.web3signer.core.Runner;
-import tech.pegasys.web3signer.core.config.Config;
+import tech.pegasys.web3signer.core.config.BaseConfig;
 import tech.pegasys.web3signer.signing.ArtifactSignerProvider;
-import tech.pegasys.web3signer.signing.config.AwsAuthenticationMode;
+import tech.pegasys.web3signer.signing.config.DefaultArtifactSignerProvider;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -38,7 +39,6 @@ import java.util.Collections;
 import java.util.function.Supplier;
 
 import io.vertx.core.Vertx;
-import io.vertx.ext.web.Router;
 import org.apache.logging.log4j.Level;
 import org.hyperledger.besu.plugin.services.MetricsSystem;
 import org.junit.jupiter.api.BeforeEach;
@@ -129,6 +129,33 @@ class CommandlineParserTest {
     final int result = parser.parseCommandLine(cmdline.split(" "));
     assertThat(result).isNotZero();
     assertThat(commandError.toString()).contains("Missing slashing protection database url");
+  }
+
+  @Test
+  void pushMetricsParsesSuccessfully() {
+    String cmdline = validBaseCommandOptions();
+    cmdline +=
+        "--metrics-push-enabled --metrics-push-port 9091 --metrics-push-host=127.0.0.1 --metrics-push-interval=30 --metrics-push-prometheus-job=\"web3signer\" eth2 --slashing-protection-enabled=false";
+
+    parser.registerSubCommands(new MockEth2SubCommand());
+    final int result = parser.parseCommandLine(cmdline.split(" "));
+
+    assertThat(result).isZero();
+    assertThat(commandError.toString()).isEmpty();
+  }
+
+  @Test
+  void metricsEnabledWithMetricsPushEnabledFailsToParse() {
+    String cmdline = validBaseCommandOptions();
+    cmdline += "--metrics-enabled --metrics-push-enabled eth2 --slashing-protection-enabled=false";
+
+    parser.registerSubCommands(new MockEth2SubCommand());
+    final int result = parser.parseCommandLine(cmdline.split(" "));
+
+    assertThat(result).isNotZero();
+    assertThat(commandError.toString())
+        .contains(
+            "Error parsing parameters: --metrics-enabled option and --metrics-push-enabled option can't be used at the same time.  Please refer to CLI reference for more details about this constraint");
   }
 
   @Test
@@ -533,8 +560,8 @@ class CommandlineParserTest {
 
   public static class NoOpRunner extends Runner {
 
-    protected NoOpRunner(final Config config) {
-      super(config);
+    protected NoOpRunner(final BaseConfig baseConfig) {
+      super(baseConfig);
     }
 
     @Override
@@ -543,17 +570,10 @@ class CommandlineParserTest {
     @Override
     protected ArtifactSignerProvider createArtifactSignerProvider(
         final Vertx vertx, final MetricsSystem metricsSystem) {
-      return null;
+      return new DefaultArtifactSignerProvider(Collections::emptyList);
     }
 
     @Override
-    protected Router populateRouter(final Context context) {
-      return null;
-    }
-
-    @Override
-    protected String getOpenApiSpecResource() {
-      return null;
-    }
+    protected void populateRouter(final Context context) {}
   }
 }

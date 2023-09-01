@@ -15,13 +15,13 @@ package tech.pegasys.web3signer.signing.config.metadata;
 import static java.lang.String.format;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import tech.pegasys.signers.azure.AzureKeyVault;
-import tech.pegasys.signers.hashicorp.HashicorpConnection;
-import tech.pegasys.signers.hashicorp.HashicorpConnectionFactory;
-import tech.pegasys.signers.hashicorp.TrustStoreType;
-import tech.pegasys.signers.hashicorp.config.ConnectionParameters;
-import tech.pegasys.signers.hashicorp.config.KeyDefinition;
-import tech.pegasys.signers.hashicorp.config.TlsOptions;
+import tech.pegasys.web3signer.keystorage.azure.AzureKeyVault;
+import tech.pegasys.web3signer.keystorage.hashicorp.HashicorpConnection;
+import tech.pegasys.web3signer.keystorage.hashicorp.HashicorpConnectionFactory;
+import tech.pegasys.web3signer.keystorage.hashicorp.TrustStoreType;
+import tech.pegasys.web3signer.keystorage.hashicorp.config.ConnectionParameters;
+import tech.pegasys.web3signer.keystorage.hashicorp.config.KeyDefinition;
+import tech.pegasys.web3signer.keystorage.hashicorp.config.TlsOptions;
 import tech.pegasys.web3signer.signing.KeyType;
 import tech.pegasys.web3signer.signing.config.AzureKeyVaultFactory;
 import tech.pegasys.web3signer.signing.config.metadata.interlock.InterlockKeyProvider;
@@ -41,20 +41,23 @@ public abstract class AbstractArtifactSignerFactory implements ArtifactSignerFac
   final Path configsDirectory;
   private final InterlockKeyProvider interlockKeyProvider;
   private final YubiHsmOpaqueDataProvider yubiHsmOpaqueDataProvider;
+  private final AzureKeyVaultFactory azureKeyVaultFactory;
 
   protected AbstractArtifactSignerFactory(
       final HashicorpConnectionFactory hashicorpConnectionFactory,
       final Path configsDirectory,
       final InterlockKeyProvider interlockKeyProvider,
-      final YubiHsmOpaqueDataProvider yubiHsmOpaqueDataProvider) {
+      final YubiHsmOpaqueDataProvider yubiHsmOpaqueDataProvider,
+      final AzureKeyVaultFactory azureKeyVaultFactory) {
     this.hashicorpConnectionFactory = hashicorpConnectionFactory;
     this.configsDirectory = configsDirectory;
     this.interlockKeyProvider = interlockKeyProvider;
     this.yubiHsmOpaqueDataProvider = yubiHsmOpaqueDataProvider;
+    this.azureKeyVaultFactory = azureKeyVaultFactory;
   }
 
   protected Bytes extractBytesFromVault(final AzureSecretSigningMetadata metadata) {
-    final AzureKeyVault azureVault = AzureKeyVaultFactory.createAzureKeyVault(metadata);
+    final AzureKeyVault azureVault = azureKeyVaultFactory.createAzureKeyVault(metadata);
 
     return azureVault
         .fetchSecret(metadata.getSecretName())
@@ -69,13 +72,16 @@ public abstract class AbstractArtifactSignerFactory implements ArtifactSignerFac
     final Optional<TlsOptions> tlsOptions = buildTlsOptions(metadata);
 
     try {
+      final ConnectionParameters connectionParameters =
+          ConnectionParameters.newBuilder()
+              .withServerHost(metadata.getServerHost())
+              .withServerPort(metadata.getServerPort())
+              .withTlsOptions(tlsOptions.orElse(null))
+              .withTimeoutMs(metadata.getTimeout())
+              .withHttpProtocolVersion(metadata.getHttpProtocolVersion())
+              .build();
       final HashicorpConnection connection =
-          hashicorpConnectionFactory.create(
-              new ConnectionParameters(
-                  metadata.getServerHost(),
-                  Optional.ofNullable(metadata.getServerPort()),
-                  tlsOptions,
-                  Optional.ofNullable(metadata.getTimeout())));
+          hashicorpConnectionFactory.create(connectionParameters);
 
       final String secret =
           connection.fetchKey(

@@ -59,9 +59,9 @@ public class KeyLoadAndSignAcceptanceTest extends SigningAcceptanceTestBase {
   public void receiveA404IfRequestedKeyDoesNotExist(final KeyType keyType)
       throws JsonProcessingException {
     if (keyType == KeyType.BLS) {
-      setupEth1Signer();
+      setupEth2Signer(Eth2Network.MINIMAL, SpecMilestone.PHASE0);
     } else {
-      setupEth2Signer(Eth2Network.MAINNET, SpecMilestone.ALTAIR);
+      setupEth1Signer();
     }
     final String body = createBody(keyType);
     given()
@@ -154,7 +154,7 @@ public class KeyLoadAndSignAcceptanceTest extends SigningAcceptanceTestBase {
         new JsonObject(ETH_2_INTERFACE_OBJECT_MAPPER.writeValueAsString(blockRequest));
     final String body = jsonObject.put("unknownField", "someValue").toString();
     final String expectedSignature =
-        BLS.sign(BLS_KEY_PAIR.getSecretKey(), blockRequest.getSigningRoot()).toString();
+        BLS.sign(BLS_KEY_PAIR.getSecretKey(), blockRequest.signingRoot()).toString();
 
     given()
         .baseUri(signer.getUrl())

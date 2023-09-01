@@ -19,15 +19,16 @@ import static org.mockito.Mockito.lenient;
 import static tech.pegasys.web3signer.signing.config.metadata.parser.YamlSignerParserTest.getFileKeystoreConfigMetadata;
 import static tech.pegasys.web3signer.signing.config.metadata.parser.YamlSignerParserTest.getFileRawConfigYaml;
 
-import tech.pegasys.signers.aws.AwsSecretsManagerProvider;
-import tech.pegasys.signers.hashicorp.HashicorpConnectionFactory;
 import tech.pegasys.teku.bls.BLSKeyPair;
 import tech.pegasys.web3signer.BLSTestUtil;
 import tech.pegasys.web3signer.KeystoreUtil;
 import tech.pegasys.web3signer.common.Web3SignerMetricCategory;
+import tech.pegasys.web3signer.keystorage.aws.AwsSecretsManagerProvider;
+import tech.pegasys.web3signer.keystorage.hashicorp.HashicorpConnectionFactory;
 import tech.pegasys.web3signer.signing.ArtifactSigner;
 import tech.pegasys.web3signer.signing.BlsArtifactSigner;
 import tech.pegasys.web3signer.signing.KeyType;
+import tech.pegasys.web3signer.signing.config.AzureKeyVaultFactory;
 import tech.pegasys.web3signer.signing.config.metadata.BlsArtifactSignerFactory;
 import tech.pegasys.web3signer.signing.config.metadata.SigningMetadataException;
 import tech.pegasys.web3signer.signing.config.metadata.interlock.InterlockKeyProvider;
@@ -59,6 +60,7 @@ class YamlSignerParserMultiReadTest {
   @Mock private InterlockKeyProvider interlockKeyProvider;
   @Mock private YubiHsmOpaqueDataProvider yubiHsmOpaqueDataProvider;
   @Mock private AwsSecretsManagerProvider awsSecretsManagerProvider;
+  @Mock private AzureKeyVaultFactory azureKeyVaultFactory;
   @Mock private LabelledMetric<OperationTimer> privateKeyRetrievalTimer;
   @Mock private OperationTimer operationTimer;
 
@@ -88,7 +90,8 @@ class YamlSignerParserMultiReadTest {
             interlockKeyProvider,
             yubiHsmOpaqueDataProvider,
             awsSecretsManagerProvider,
-            (args) -> new BlsArtifactSigner(args.getKeyPair(), args.getOrigin(), args.getPath()));
+            (args) -> new BlsArtifactSigner(args.getKeyPair(), args.getOrigin(), args.getPath()),
+            azureKeyVaultFactory);
 
     signerParser =
         new YamlSignerParser(
@@ -110,7 +113,8 @@ class YamlSignerParserMultiReadTest {
                 + "type: \"file-raw\"",
             prvKey1, prvKey2);
 
-    final List<ArtifactSigner> signingMetadataList = signerParser.parse(multiYaml);
+    final List<ArtifactSigner> signingMetadataList =
+        signerParser.parse(signerParser.readSigningMetadata(multiYaml));
 
     assertThat(signingMetadataList).hasSize(2);
   }
@@ -132,7 +136,8 @@ class YamlSignerParserMultiReadTest {
         String.format("%s%n%s", fileKeystoreMetadataYaml, rawKeystoreMetadataYaml);
 
     // parse and assert results
-    final List<ArtifactSigner> result = signerParser.parse(multiDocYaml);
+    final List<ArtifactSigner> result =
+        signerParser.parse(signerParser.readSigningMetadata(multiDocYaml));
     final Set<String> publicKeyIdentifiers =
         result.stream().map(ArtifactSigner::getIdentifier).collect(Collectors.toSet());
 
@@ -158,7 +163,7 @@ class YamlSignerParserMultiReadTest {
             prvKey1, prvKey2);
 
     assertThatExceptionOfType(SigningMetadataException.class)
-        .isThrownBy(() -> signerParser.parse(multiYaml))
+        .isThrownBy(() -> signerParser.parse(signerParser.readSigningMetadata(multiYaml)))
         .withMessage("Invalid signing metadata file format");
   }
 }

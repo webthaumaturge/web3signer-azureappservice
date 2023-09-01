@@ -16,19 +16,18 @@ import static com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKN
 import static com.fasterxml.jackson.databind.MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS;
 import static com.fasterxml.jackson.databind.MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES;
 import static io.vertx.core.http.HttpHeaders.CONTENT_TYPE;
-import static tech.pegasys.web3signer.core.service.http.OpenApiOperationsId.RELOAD;
 import static tech.pegasys.web3signer.core.service.http.handlers.ContentTypes.JSON_UTF_8;
 
-import tech.pegasys.signers.aws.AwsSecretsManagerProvider;
-import tech.pegasys.signers.hashicorp.HashicorpConnectionFactory;
-import tech.pegasys.signers.secp256k1.azure.AzureKeyVaultSignerFactory;
-import tech.pegasys.web3signer.core.config.Config;
+import tech.pegasys.web3signer.core.config.BaseConfig;
 import tech.pegasys.web3signer.core.service.jsonrpc.FcJsonRpc;
 import tech.pegasys.web3signer.core.service.jsonrpc.FcJsonRpcMetrics;
 import tech.pegasys.web3signer.core.service.jsonrpc.FilecoinJsonRpcModule;
+import tech.pegasys.web3signer.keystorage.aws.AwsSecretsManagerProvider;
+import tech.pegasys.web3signer.keystorage.hashicorp.HashicorpConnectionFactory;
 import tech.pegasys.web3signer.signing.ArtifactSignerProvider;
 import tech.pegasys.web3signer.signing.FcBlsArtifactSigner;
 import tech.pegasys.web3signer.signing.FcSecpArtifactSigner;
+import tech.pegasys.web3signer.signing.config.AzureKeyVaultFactory;
 import tech.pegasys.web3signer.signing.config.DefaultArtifactSignerProvider;
 import tech.pegasys.web3signer.signing.config.SignerLoader;
 import tech.pegasys.web3signer.signing.config.metadata.AbstractArtifactSignerFactory;
@@ -39,6 +38,9 @@ import tech.pegasys.web3signer.signing.config.metadata.parser.YamlMapperFactory;
 import tech.pegasys.web3signer.signing.config.metadata.parser.YamlSignerParser;
 import tech.pegasys.web3signer.signing.config.metadata.yubihsm.YubiHsmOpaqueDataProvider;
 import tech.pegasys.web3signer.signing.filecoin.FilecoinNetwork;
+import tech.pegasys.web3signer.signing.secp256k1.aws.AwsKmsSignerFactory;
+import tech.pegasys.web3signer.signing.secp256k1.azure.AzureHttpClientFactory;
+import tech.pegasys.web3signer.signing.secp256k1.azure.AzureKeyVaultSignerFactory;
 
 import java.util.List;
 
@@ -47,44 +49,38 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.github.arteam.simplejsonrpc.server.JsonRpcServer;
 import io.vertx.core.Vertx;
 import io.vertx.ext.web.Router;
-import io.vertx.ext.web.openapi.RouterBuilder;
 import org.hyperledger.besu.plugin.services.MetricsSystem;
 
 public class FilecoinRunner extends Runner {
   private static final int AWS_CACHE_MAXIMUM_SIZE = 1;
   private static final String FC_JSON_RPC_PATH = "/rpc/v0";
   private final FilecoinNetwork network;
+  private final long awsKmsClientCacheSize;
 
-  public FilecoinRunner(final Config config, final FilecoinNetwork network) {
-    super(config);
+  public FilecoinRunner(
+      final BaseConfig baseConfig,
+      final FilecoinNetwork network,
+      final long awsKmsClientCacheSize) {
+    super(baseConfig);
     this.network = network;
+    this.awsKmsClientCacheSize = awsKmsClientCacheSize;
   }
 
   @Override
-  protected String getOpenApiSpecResource() {
-    return "filecoin/web3signer.yaml";
-  }
-
-  @Override
-  protected Router populateRouter(final Context context) {
+  protected void populateRouter(final Context context) {
     addReloadHandler(
-        context.getRouterBuilder(),
-        context.getArtifactSignerProvider(),
-        RELOAD.name(),
+        context.getRouter(),
+        List.of(context.getArtifactSignerProvider()),
         context.getErrorHandler());
 
-    return registerFilecoinJsonRpcRoute(
-        context.getRouterBuilder(),
-        context.getMetricsSystem(),
-        context.getArtifactSignerProvider());
+    registerFilecoinJsonRpcRoute(
+        context.getRouter(), context.getMetricsSystem(), context.getArtifactSignerProvider());
   }
 
   private Router registerFilecoinJsonRpcRoute(
-      final RouterBuilder routerBuilder,
+      final Router router,
       final MetricsSystem metricsSystem,
       final ArtifactSignerProvider fcSigners) {
-
-    final Router router = routerBuilder.createRouter();
 
     final FcJsonRpcMetrics fcJsonRpcMetrics = new FcJsonRpcMetrics(metricsSystem);
     final FcJsonRpc fileCoinJsonRpc = new FcJsonRpc(fcSigners, fcJsonRpcMetrics);
@@ -102,7 +98,7 @@ public class FilecoinRunner extends Runner {
         .handler(fcJsonRpcMetrics::incTotalFilecoinRequests)
         .blockingHandler(
             routingContext -> {
-              final String body = routingContext.getBodyAsString();
+              final String body = routingContext.body().asString();
               final String jsonRpcResponse = jsonRpcServer.handle(body, fileCoinJsonRpc);
               routingContext.response().putHeader(CONTENT_TYPE, JSON_UTF_8).end(jsonRpcResponse);
             },
@@ -116,11 +112,18 @@ public class FilecoinRunner extends Runner {
       final Vertx vertx, final MetricsSystem metricsSystem) {
     return new DefaultArtifactSignerProvider(
         () -> {
-          final AzureKeyVaultSignerFactory azureFactory = new AzureKeyVaultSignerFactory();
-          final HashicorpConnectionFactory hashicorpConnectionFactory =
-              new HashicorpConnectionFactory(vertx);
+          final AzureKeyVaultFactory azureKeyVaultFactory = new AzureKeyVaultFactory();
+          registerClose(azureKeyVaultFactory::close);
+          final AzureHttpClientFactory azureHttpClientFactory = new AzureHttpClientFactory();
+          final AzureKeyVaultSignerFactory azureSignerFactory =
+              new AzureKeyVaultSignerFactory(azureKeyVaultFactory, azureHttpClientFactory);
+          final boolean applySha3Hash = false;
+          final AwsKmsSignerFactory awsKmsSignerFactory =
+              new AwsKmsSignerFactory(awsKmsClientCacheSize, applySha3Hash);
 
-          try (final InterlockKeyProvider interlockKeyProvider = new InterlockKeyProvider(vertx);
+          try (final HashicorpConnectionFactory hashicorpConnectionFactory =
+                  new HashicorpConnectionFactory();
+              final InterlockKeyProvider interlockKeyProvider = new InterlockKeyProvider(vertx);
               final YubiHsmOpaqueDataProvider yubiHsmOpaqueDataProvider =
                   new YubiHsmOpaqueDataProvider();
               final AwsSecretsManagerProvider awsSecretsManagerProvider =
@@ -128,31 +131,35 @@ public class FilecoinRunner extends Runner {
 
             final AbstractArtifactSignerFactory blsArtifactSignerFactory =
                 new BlsArtifactSignerFactory(
-                    config.getKeyConfigPath(),
+                    baseConfig.getKeyConfigPath(),
                     metricsSystem,
                     hashicorpConnectionFactory,
                     interlockKeyProvider,
                     yubiHsmOpaqueDataProvider,
                     awsSecretsManagerProvider,
-                    (args) -> new FcBlsArtifactSigner(args.getKeyPair(), network));
+                    (args) -> new FcBlsArtifactSigner(args.getKeyPair(), network),
+                    azureKeyVaultFactory);
 
             final AbstractArtifactSignerFactory secpArtifactSignerFactory =
                 new Secp256k1ArtifactSignerFactory(
                     hashicorpConnectionFactory,
-                    config.getKeyConfigPath(),
-                    azureFactory,
+                    baseConfig.getKeyConfigPath(),
+                    azureSignerFactory,
                     interlockKeyProvider,
                     yubiHsmOpaqueDataProvider,
                     signer -> new FcSecpArtifactSigner(signer, network),
-                    false);
+                    azureKeyVaultFactory,
+                    awsKmsSignerFactory,
+                    applySha3Hash);
 
-            return new SignerLoader()
+            return new SignerLoader(baseConfig.keystoreParallelProcessingEnabled())
                 .load(
-                    config.getKeyConfigPath(),
+                    baseConfig.getKeyConfigPath(),
                     "yaml",
                     new YamlSignerParser(
                         List.of(blsArtifactSignerFactory, secpArtifactSignerFactory),
-                        YamlMapperFactory.createYamlMapper(config.getKeyStoreConfigFileMaxSize())))
+                        YamlMapperFactory.createYamlMapper(
+                            baseConfig.getKeyStoreConfigFileMaxSize())))
                 .getValues();
           }
         });

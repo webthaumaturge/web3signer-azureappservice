@@ -24,6 +24,7 @@ import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParame
 
 import tech.pegasys.web3signer.core.config.ClientAuthConstraints;
 import tech.pegasys.web3signer.core.config.TlsOptions;
+import tech.pegasys.web3signer.core.config.client.ClientTlsOptions;
 import tech.pegasys.web3signer.dsl.signer.SignerConfiguration;
 import tech.pegasys.web3signer.dsl.signer.WatermarkRepairParameters;
 import tech.pegasys.web3signer.dsl.utils.DatabaseUtil;
@@ -34,6 +35,7 @@ import tech.pegasys.web3signer.signing.config.KeystoresParameters;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -62,7 +64,7 @@ public class CmdLineParamsDefaultImpl implements CmdLineParamsBuilder {
       params.add("--http-host-allowlist");
       params.add(String.join(",", signerConfig.getHttpHostAllowList()));
     }
-    params.add("--key-store-path");
+    params.add("--key-config-path");
     params.add(signerConfig.getKeyStorePath().toString());
     if (signerConfig.isMetricsEnabled()) {
       params.add("--metrics-enabled");
@@ -97,26 +99,7 @@ public class CmdLineParamsDefaultImpl implements CmdLineParamsBuilder {
       params.addAll(createEth2Args());
 
       if (signerConfig.getAzureKeyVaultParameters().isPresent()) {
-        final AzureKeyVaultParameters azureParams = signerConfig.getAzureKeyVaultParameters().get();
-        params.add("--azure-vault-enabled=true");
-        params.add("--azure-vault-auth-mode");
-        params.add(azureParams.getAuthenticationMode().name());
-        params.add("--azure-vault-name");
-        params.add(azureParams.getKeyVaultName());
-        params.add("--azure-client-id");
-        params.add(azureParams.getClientId());
-        params.add("--azure-client-secret");
-        params.add(azureParams.getClientSecret());
-        params.add("--azure-tenant-id");
-        params.add(azureParams.getTenantId());
-
-        azureParams
-            .getTags()
-            .forEach(
-                (tagName, tagValue) -> {
-                  params.add("--azure-secrets-tags");
-                  params.add(tagName + "=" + tagValue);
-                });
+        createAzureArgs(params);
       }
       if (signerConfig.getKeystoresParameters().isPresent()) {
         final KeystoresParameters keystoresParameters = signerConfig.getKeystoresParameters().get();
@@ -135,6 +118,16 @@ public class CmdLineParamsDefaultImpl implements CmdLineParamsBuilder {
       signerConfig
           .getAwsSecretsManagerParameters()
           .ifPresent(awsParams -> params.addAll(awsBulkLoadingOptions(awsParams)));
+    } else if (signerConfig.getMode().equals("eth1")) {
+      params.add("--downstream-http-port");
+      params.add(Integer.toString(signerConfig.getDownstreamHttpPort()));
+      params.add("--chain-id");
+      params.add(Long.toString(signerConfig.getChainIdProvider().id()));
+      params.addAll(createDownstreamTlsArgs());
+
+      if (signerConfig.getAzureKeyVaultParameters().isPresent()) {
+        createAzureArgs(params);
+      }
     }
 
     return params;
@@ -168,6 +161,39 @@ public class CmdLineParamsDefaultImpl implements CmdLineParamsBuilder {
       }
     }
     return params;
+  }
+
+  private Collection<String> createDownstreamTlsArgs() {
+    final Optional<ClientTlsOptions> optionalClientTlsOptions =
+        signerConfig.getDownstreamTlsOptions();
+    if (optionalClientTlsOptions.isEmpty()) {
+      return Collections.emptyList();
+    }
+
+    final List<String> params = new ArrayList<>();
+    params.add("--downstream-http-tls-enabled");
+
+    final ClientTlsOptions clientTlsOptions = optionalClientTlsOptions.get();
+    clientTlsOptions
+        .getKeyStoreOptions()
+        .ifPresent(
+            pkcsStoreConfig -> {
+              params.add("--downstream-http-tls-keystore-file");
+              params.add(pkcsStoreConfig.getKeyStoreFile().toString());
+              params.add("--downstream-http-tls-keystore-password-file");
+              params.add(pkcsStoreConfig.getPasswordFile().toString());
+            });
+
+    if (clientTlsOptions.getKnownServersFile().isPresent()) {
+      params.add("--downstream-http-tls-known-servers-file");
+      params.add(clientTlsOptions.getKnownServersFile().get().toAbsolutePath().toString());
+    }
+    if (!clientTlsOptions.isCaAuthEnabled()) {
+      params.add("--downstream-http-tls-ca-auth-enabled");
+      params.add("false");
+    }
+
+    return Collections.unmodifiableCollection(params);
   }
 
   private Collection<String> createEth2Args() {
@@ -225,6 +251,16 @@ public class CmdLineParamsDefaultImpl implements CmdLineParamsBuilder {
     if (signerConfig.getCapellaForkEpoch().isPresent()) {
       params.add("--Xnetwork-capella-fork-epoch");
       params.add(Long.toString(signerConfig.getCapellaForkEpoch().get()));
+    }
+
+    if (signerConfig.getDenebForkEpoch().isPresent()) {
+      params.add("--Xnetwork-deneb-fork-epoch");
+      params.add(Long.toString(signerConfig.getDenebForkEpoch().get()));
+    }
+
+    if (signerConfig.getTrustedSetup().isPresent()) {
+      params.add("--Xtrusted-setup");
+      params.add(signerConfig.getTrustedSetup().get());
     }
 
     if (signerConfig.getNetwork().isPresent()) {
@@ -288,6 +324,29 @@ public class CmdLineParamsDefaultImpl implements CmdLineParamsBuilder {
     }
 
     return params;
+  }
+
+  private void createAzureArgs(final List<String> params) {
+    final AzureKeyVaultParameters azureParams = signerConfig.getAzureKeyVaultParameters().get();
+    params.add("--azure-vault-enabled=true");
+    params.add("--azure-vault-auth-mode");
+    params.add(azureParams.getAuthenticationMode().name());
+    params.add("--azure-vault-name");
+    params.add(azureParams.getKeyVaultName());
+    params.add("--azure-client-id");
+    params.add(azureParams.getClientId());
+    params.add("--azure-client-secret");
+    params.add(azureParams.getClientSecret());
+    params.add("--azure-tenant-id");
+    params.add(azureParams.getTenantId());
+
+    azureParams
+        .getTags()
+        .forEach(
+            (tagName, tagValue) -> {
+              params.add("--azure-tags");
+              params.add(tagName + "=" + tagValue);
+            });
   }
 
   private List<String> createSubCommandArgs() {

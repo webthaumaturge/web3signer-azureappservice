@@ -7,7 +7,7 @@ orbs:
 executors:
   executor_med:  # 2cpu, 4G ram
     docker:
-      - image: cimg/openjdk:11.0
+      - image: cimg/openjdk:17.0
         auth: &docker-auth
           # Don't panic, throw away account to avoid Docker rate limits when downloading.
           # Second reason we're doing this is so that forked PRs from external contributors works ie env vars aren't visible to forked PRs from within contexts
@@ -21,7 +21,7 @@ executors:
 
   executor_large: # 4cpu, 8G ram
     docker:
-      - image: cimg/openjdk:11.0
+      - image: cimg/openjdk:17.0
         auth:
           <<: *docker-auth   
     resource_class: large
@@ -33,7 +33,7 @@ executors:
   executor_large_with_fc_devnet: # 4cpu, 8G ram
     docker:
       # Primary container
-      - image: cimg/openjdk:11.0
+      - image: cimg/openjdk:17.0
         auth:
           <<: *docker-auth     
       # Secondary container running lotus as devnet on port 7777
@@ -55,7 +55,7 @@ executors:
 
   machine_executor_arm64:
     machine:
-      image: ubuntu-2004:202201-02 # Ubuntu 20.04, Docker v20.10.12, Docker Compose v1.29.2
+      image: ubuntu-2204:current # https://circleci.com/developer/machine/image/ubuntu-2204
     resource_class: arm.medium
     environment:
       architecture: "arm64"
@@ -63,12 +63,20 @@ executors:
 
   machine_executor_amd64:
     machine:
-      image: ubuntu-2004:202201-02 # Ubuntu 20.04, Docker v20.10.12, Docker Compose v1.29.2
+      image: ubuntu-2204:current # https://circleci.com/developer/machine/image/ubuntu-2204
       docker_layer_caching: true
     working_directory: ~/project
     environment:
       architecture: "amd64"
       platform: "linux/amd64"
+
+  trivy_executor:
+    docker:
+      - image: docker:stable-git
+        auth:
+          <<: *docker-auth
+    resource_class: small
+    working_directory: ~/project
 
 commands:
   prepare:
@@ -81,7 +89,15 @@ commands:
             - deps-{{ checksum "build.gradle" }}-{{ .Branch }}-{{ .Revision }}
             - deps-{{ checksum "build.gradle" }}
             - deps-
-
+  machine_java_17:
+    description: "Install Java 17 on machine executors"
+    steps:
+      - run:
+          name: Java 17
+          command: |
+            sudo apt update
+            sudo apt install -q --assume-yes openjdk-17-jre-headless openjdk-17-jdk-headless
+            sudo update-java-alternatives -a
   capture_test_results:
     description: "Capture test results"
     steps:
@@ -138,7 +154,7 @@ commands:
             mkdir -p $HOME/.docker/trust/private
             echo $DCT_KEY | base64 --decode > $HOME/.docker/trust/private/$DCT_HASH.key
             chmod 600 $HOME/.docker/trust/private/$DCT_HASH.key
-            docker trust key load $HOME/.docker/trust/private/$DCT_HASH.key --name opsquorum
+            docker trust key load $HOME/.docker/trust/private/$DCT_HASH.key --name ecosystem
 
   docker_publish_images:
     description: "Upload the docker images"
@@ -253,6 +269,7 @@ jobs:
       - prepare
       - attach_workspace:
           at: ~/project
+      - machine_java_17
       - run:
           name: build and test Docker image
           command: |
@@ -265,6 +282,7 @@ jobs:
       - prepare
       - attach_workspace:
           at: ~/project
+      - machine_java_17
       - docker_trust_sign
       - docker_publish_images
       - notify
@@ -275,6 +293,7 @@ jobs:
       - prepare
       - attach_workspace:
           at: ~/project
+      - machine_java_17
       - docker_trust_sign
       - docker_publish_images
       - notify
@@ -290,6 +309,30 @@ jobs:
             ./gradlew --no-daemon --parallel manifestDocker
       - notify
 
+  dockerScan:
+    executor: trivy_executor
+    steps:
+      - prepare
+      - setup_remote_docker:
+          docker_layer_caching: false
+      - run:
+          name: Install trivy
+          command: |
+            apk add --update-cache --upgrade curl bash
+            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+      # remove the test files and only use the folder names
+      - run:
+          name: Scan with trivy
+          shell: /bin/sh
+          command: |
+            rm -rf docker/test*
+            for FILE in $(ls docker)
+            do
+              docker pull -q "consensys/web3signer:develop-$FILE"
+              trivy -q image --exit-code 1 --no-progress --severity HIGH,CRITICAL --ignorefile "gradle/trivyignore.txt" --timeout 10m "consensys/web3signer:develop-$FILE" 
+            done
+      - notify
+ 
   publishOpenApiSpec:
     executor: executor_node
     steps:
@@ -326,11 +369,13 @@ workflows:
                 - master
     jobs:
       - build
+      - dockerScan
       - acceptanceTests:
           requires:
             - build
           context:
             - protocols-signers
+            
   default:
     jobs:
       - build:

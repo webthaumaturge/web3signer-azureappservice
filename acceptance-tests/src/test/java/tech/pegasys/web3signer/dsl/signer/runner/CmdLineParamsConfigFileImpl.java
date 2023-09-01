@@ -24,6 +24,7 @@ import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParame
 
 import tech.pegasys.web3signer.core.config.ClientAuthConstraints;
 import tech.pegasys.web3signer.core.config.TlsOptions;
+import tech.pegasys.web3signer.core.config.client.ClientTlsOptions;
 import tech.pegasys.web3signer.dsl.signer.SignerConfiguration;
 import tech.pegasys.web3signer.dsl.signer.WatermarkRepairParameters;
 import tech.pegasys.web3signer.dsl.utils.DatabaseUtil;
@@ -114,33 +115,6 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
     if (signerConfig.getMode().equals("eth2")) {
       yamlConfig.append(createEth2SlashingProtectionArgs());
 
-      if (signerConfig.getAzureKeyVaultParameters().isPresent()) {
-        final AzureKeyVaultParameters azureParams = signerConfig.getAzureKeyVaultParameters().get();
-        yamlConfig.append(
-            String.format(YAML_BOOLEAN_FMT, "eth2.azure-vault-enabled", Boolean.TRUE));
-        yamlConfig.append(
-            String.format(
-                YAML_STRING_FMT,
-                "eth2.azure-vault-auth-mode",
-                azureParams.getAuthenticationMode().name()));
-        yamlConfig.append(
-            String.format(YAML_STRING_FMT, "eth2.azure-vault-name", azureParams.getKeyVaultName()));
-        yamlConfig.append(
-            String.format(YAML_STRING_FMT, "eth2.azure-client-id", azureParams.getClientId()));
-        yamlConfig.append(
-            String.format(
-                YAML_STRING_FMT, "eth2.azure-client-secret", azureParams.getClientSecret()));
-        yamlConfig.append(
-            String.format(YAML_STRING_FMT, "eth2.azure-tenant-id", azureParams.getTenantId()));
-
-        azureParams
-            .getTags()
-            .forEach(
-                (tagName, tagValue) ->
-                    yamlConfig.append(
-                        String.format(
-                            YAML_STRING_FMT, "eth2.azure-secrets-tags", tagName + "=" + tagValue)));
-      }
       if (signerConfig.getKeystoresParameters().isPresent()) {
         final KeystoresParameters keystoresParameters = signerConfig.getKeystoresParameters().get();
         yamlConfig.append(
@@ -171,7 +145,20 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
       final CommandArgs subCommandArgs = createSubCommandArgs();
       params.addAll(subCommandArgs.params);
       yamlConfig.append(subCommandArgs.yamlConfig);
+    } else if (signerConfig.getMode().equals("eth1")) {
+      yamlConfig.append(
+          String.format(
+              YAML_NUMERIC_FMT, "eth1.downstream-http-port", signerConfig.getDownstreamHttpPort()));
+      yamlConfig.append(
+          String.format(YAML_NUMERIC_FMT, "eth1.chain-id", signerConfig.getChainIdProvider().id()));
+      yamlConfig.append(createDownstreamTlsArgs());
     }
+
+    signerConfig
+        .getAzureKeyVaultParameters()
+        .ifPresent(
+            azureParams ->
+                yamlConfig.append(azureBulkLoadingOptions(signerConfig.getMode(), azureParams)));
 
     // create temporary config file
     try {
@@ -186,6 +173,35 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
     }
 
     return params;
+  }
+
+  private String azureBulkLoadingOptions(
+      final String mode, final AzureKeyVaultParameters azureParams) {
+    final StringBuilder yamlConfig = new StringBuilder();
+    yamlConfig.append(String.format(YAML_BOOLEAN_FMT, mode + ".azure-vault-enabled", Boolean.TRUE));
+    yamlConfig.append(
+        String.format(
+            YAML_STRING_FMT,
+            mode + ".azure-vault-auth-mode",
+            azureParams.getAuthenticationMode().name()));
+    yamlConfig.append(
+        String.format(YAML_STRING_FMT, mode + ".azure-vault-name", azureParams.getKeyVaultName()));
+    yamlConfig.append(
+        String.format(YAML_STRING_FMT, mode + ".azure-client-id", azureParams.getClientId()));
+    yamlConfig.append(
+        String.format(
+            YAML_STRING_FMT, mode + ".azure-client-secret", azureParams.getClientSecret()));
+    yamlConfig.append(
+        String.format(YAML_STRING_FMT, mode + ".azure-tenant-id", azureParams.getTenantId()));
+
+    azureParams
+        .getTags()
+        .forEach(
+            (tagName, tagValue) ->
+                yamlConfig.append(
+                    String.format(
+                        YAML_STRING_FMT, mode + ".azure-tags", tagName + "=" + tagValue)));
+    return yamlConfig.toString();
   }
 
   private CommandArgs createSubCommandArgs() {
@@ -260,6 +276,50 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
         }
       }
     }
+    return yamlConfig.toString();
+  }
+
+  private String createDownstreamTlsArgs() {
+    final Optional<ClientTlsOptions> optionalClientTlsOptions =
+        signerConfig.getDownstreamTlsOptions();
+    final StringBuilder yamlConfig = new StringBuilder();
+    if (optionalClientTlsOptions.isEmpty()) {
+      return yamlConfig.toString();
+    }
+
+    final ClientTlsOptions clientTlsOptions = optionalClientTlsOptions.get();
+    yamlConfig.append(
+        String.format(YAML_BOOLEAN_FMT, "eth1.downstream-http-tls-enabled", Boolean.TRUE));
+
+    clientTlsOptions
+        .getKeyStoreOptions()
+        .ifPresent(
+            pkcsStoreConfig -> {
+              yamlConfig.append(
+                  String.format(
+                      YAML_STRING_FMT,
+                      "eth1.downstream-http-tls-keystore-file",
+                      pkcsStoreConfig.getKeyStoreFile().toString()));
+              yamlConfig.append(
+                  String.format(
+                      YAML_STRING_FMT,
+                      "eth1.downstream-http-tls-keystore-password-file",
+                      pkcsStoreConfig.getPasswordFile().toString()));
+            });
+
+    if (clientTlsOptions.getKnownServersFile().isPresent()) {
+      yamlConfig.append(
+          String.format(
+              YAML_STRING_FMT,
+              "eth1.downstream-http-tls-known-servers-file",
+              clientTlsOptions.getKnownServersFile().get().toAbsolutePath()));
+    }
+    if (!clientTlsOptions.isCaAuthEnabled()) {
+      yamlConfig.append(
+          String.format(
+              YAML_BOOLEAN_FMT, "eth1.downstream-http-tls-ca-auth-enabled", Boolean.FALSE));
+    }
+
     return yamlConfig.toString();
   }
 
@@ -357,6 +417,20 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
               YAML_NUMERIC_FMT,
               "eth2.Xnetwork-capella-fork-epoch",
               signerConfig.getCapellaForkEpoch().get()));
+    }
+
+    if (signerConfig.getDenebForkEpoch().isPresent()) {
+      yamlConfig.append(
+          String.format(
+              YAML_NUMERIC_FMT,
+              "eth2.Xnetwork-deneb-fork-epoch",
+              signerConfig.getDenebForkEpoch().get()));
+    }
+
+    if (signerConfig.getTrustedSetup().isPresent()) {
+      yamlConfig.append(
+          String.format(
+              YAML_STRING_FMT, "eth2.Xtrusted-setup", signerConfig.getTrustedSetup().get()));
     }
 
     if (signerConfig.getNetwork().isPresent()) {
