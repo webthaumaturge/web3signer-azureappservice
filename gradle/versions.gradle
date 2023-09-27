@@ -85,12 +85,12 @@ dependencyManagement {
       entry 'mockito-junit-jupiter'
     }
 
-    dependency 'org.hyperledger.besu:plugin-api:22.10.3'
-    dependency 'org.hyperledger.besu.internal:metrics-core:22.10.3'
+    dependency 'org.hyperledger.besu:plugin-api:23.7.2'
+    dependency 'org.hyperledger.besu.internal:metrics-core:23.7.2'
 
     dependency 'org.xipki.iaik:sunpkcs11-wrapper:1.4.9'
 
-    dependencySet(group: 'tech.pegasys.teku.internal', version: '23.8.0') {
+    dependencySet(group: 'tech.pegasys.teku.internal', version: '23.9.1') {
       entry ('bls') {
         exclude group: 'org.bouncycastle', name: 'bcprov-jdk15on'
       }
@@ -112,7 +112,7 @@ dependencyManagement {
 
     dependency 'io.rest-assured:rest-assured:4.4.0'
     dependency 'org.zeroturnaround:zt-exec:1.12'
-    dependencySet(group: 'org.web3j', version: '4.9.5') {
+    dependencySet(group: 'org.web3j', version: '4.10.2') {
       entry 'besu'
       entry ('core') {
         exclude group: 'com.github.jnr', name: 'jnr-unixsocket'
@@ -185,7 +185,7 @@ dependencyManagement {
     dependency 'com.squareup.okio:okio:3.4.0'
 
     // addressing CVE-2022-41881, CVE-2022-41915, CVE-2023-34462
-    dependencySet(group: 'io.netty', version: '4.1.95.Final') {
+    dependencySet(group: 'io.netty', version: '4.1.97.Final') {
       entry 'netty-all'
       entry 'netty-handler'
       entry 'netty-resolver-dns'
@@ -237,5 +237,12 @@ dependencyManagement {
 
     // used in tests to assert log message
     dependency 'de.neuland-bfi:assertj-logging-log4j:0.5.0'
+
+    // addresses CVE-2023-4759
+    /*
+         +--- com.google.errorprone:error_prone_check_api:2.11.0
+          |    +--- io.github.java-diff-utils:java-diff-utils:4.0
+     */
+    dependency 'io.github.java-diff-utils:java-diff-utils:4.12'
   }
 }

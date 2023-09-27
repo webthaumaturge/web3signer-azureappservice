@@ -25,6 +25,7 @@ import tech.pegasys.teku.spec.Spec;
 import tech.pegasys.web3signer.core.config.BaseConfig;
 import tech.pegasys.web3signer.core.metrics.SlashingProtectionMetrics;
 import tech.pegasys.web3signer.core.service.http.SigningObjectMapperFactory;
+import tech.pegasys.web3signer.core.service.http.handlers.HighWatermarkHandler;
 import tech.pegasys.web3signer.core.service.http.handlers.LogErrorHandler;
 import tech.pegasys.web3signer.core.service.http.handlers.keymanager.delete.DeleteKeystoresHandler;
 import tech.pegasys.web3signer.core.service.http.handlers.keymanager.imports.ImportKeystoresHandler;
@@ -43,9 +44,9 @@ import tech.pegasys.web3signer.signing.BlsArtifactSigner;
 import tech.pegasys.web3signer.signing.FileValidatorManager;
 import tech.pegasys.web3signer.signing.KeystoreFileManager;
 import tech.pegasys.web3signer.signing.ValidatorManager;
-import tech.pegasys.web3signer.signing.bulkloading.AWSBulkLoadingArtifactSignerProvider;
+import tech.pegasys.web3signer.signing.bulkloading.BlsAwsBulkLoader;
 import tech.pegasys.web3signer.signing.bulkloading.BlsKeystoreBulkLoader;
-import tech.pegasys.web3signer.signing.config.AwsSecretsManagerParameters;
+import tech.pegasys.web3signer.signing.config.AwsVaultParameters;
 import tech.pegasys.web3signer.signing.config.AzureKeyVaultFactory;
 import tech.pegasys.web3signer.signing.config.AzureKeyVaultParameters;
 import tech.pegasys.web3signer.signing.config.DefaultArtifactSignerProvider;
@@ -90,11 +91,12 @@ public class Eth2Runner extends Runner {
   public static final String KEYSTORES_PATH = "/eth/v1/keystores";
   public static final String PUBLIC_KEYS_PATH = "/api/v1/eth2/publicKeys";
   public static final String SIGN_PATH = "/api/v1/eth2/sign/:identifier";
+  public static final String HIGH_WATERMARK_PATH = "/api/v1/eth2/highWatermark";
   private static final Logger LOG = LogManager.getLogger();
 
   private final Optional<SlashingProtectionContext> slashingProtectionContext;
   private final AzureKeyVaultParameters azureKeyVaultParameters;
-  private final AwsSecretsManagerParameters awsSecretsManagerParameters;
+  private final AwsVaultParameters awsVaultParameters;
   private final SlashingProtectionParameters slashingProtectionParameters;
   private final boolean pruningEnabled;
   private final KeystoresParameters keystoresParameters;
@@ -106,7 +108,7 @@ public class Eth2Runner extends Runner {
       final SlashingProtectionParameters slashingProtectionParameters,
       final AzureKeyVaultParameters azureKeyVaultParameters,
       final KeystoresParameters keystoresParameters,
-      final AwsSecretsManagerParameters awsSecretsManagerParameters,
+      final AwsVaultParameters awsVaultParameters,
       final Spec eth2Spec,
       final boolean isKeyManagerApiEnabled) {
     super(baseConfig);
@@ -117,7 +119,7 @@ public class Eth2Runner extends Runner {
     this.keystoresParameters = keystoresParameters;
     this.eth2Spec = eth2Spec;
     this.isKeyManagerApiEnabled = isKeyManagerApiEnabled;
-    this.awsSecretsManagerParameters = awsSecretsManagerParameters;
+    this.awsVaultParameters = awsVaultParameters;
   }
 
   private Optional<SlashingProtectionContext> createSlashingProtection(
@@ -170,6 +172,13 @@ public class Eth2Runner extends Runner {
         .failureHandler(errorHandler);
 
     addReloadHandler(router, List.of(blsSignerProvider), errorHandler);
+
+    slashingProtectionContext.ifPresent(
+        protectionContext ->
+            router
+                .route(HttpMethod.GET, HIGH_WATERMARK_PATH)
+                .handler(new HighWatermarkHandler(protectionContext.getSlashingProtection()))
+                .failureHandler(errorHandler));
 
     if (isKeyManagerApiEnabled) {
       router
@@ -272,7 +281,7 @@ public class Eth2Runner extends Runner {
         final YubiHsmOpaqueDataProvider yubiHsmOpaqueDataProvider =
             new YubiHsmOpaqueDataProvider();
         final AwsSecretsManagerProvider awsSecretsManagerProvider =
-            new AwsSecretsManagerProvider(awsSecretsManagerParameters.getCacheMaximumSize()); ) {
+            new AwsSecretsManagerProvider(awsVaultParameters.getCacheMaximumSize()); ) {
       final AbstractArtifactSignerFactory artifactSignerFactory =
           new BlsArtifactSignerFactory(
               baseConfig.getKeyConfigPath(),
@@ -338,13 +347,11 @@ public class Eth2Runner extends Runner {
       results = MappedResults.merge(results, keystoreSignersResult);
     }
 
-    if (awsSecretsManagerParameters.isEnabled()) {
+    if (awsVaultParameters.isEnabled()) {
       LOG.info("Bulk loading keys from AWS Secrets Manager ... ");
-      final AWSBulkLoadingArtifactSignerProvider awsBulkLoadingArtifactSignerProvider =
-          new AWSBulkLoadingArtifactSignerProvider();
+      final BlsAwsBulkLoader blsAwsBulkLoader = new BlsAwsBulkLoader();
 
-      final MappedResults<ArtifactSigner> awsResult =
-          awsBulkLoadingArtifactSignerProvider.load(awsSecretsManagerParameters);
+      final MappedResults<ArtifactSigner> awsResult = blsAwsBulkLoader.load(awsVaultParameters);
       LOG.info(
           "Keys loaded from AWS Secrets Manager: [{}], with error count: [{}]",
           awsResult.getValues().size(),
