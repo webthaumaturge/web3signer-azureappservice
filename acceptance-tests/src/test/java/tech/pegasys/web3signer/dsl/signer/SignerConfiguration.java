@@ -18,6 +18,7 @@ import tech.pegasys.web3signer.core.service.jsonrpc.handlers.signing.ChainIdProv
 import tech.pegasys.web3signer.dsl.tls.TlsCertificateDefinition;
 import tech.pegasys.web3signer.signing.config.AwsVaultParameters;
 import tech.pegasys.web3signer.signing.config.AzureKeyVaultParameters;
+import tech.pegasys.web3signer.signing.config.GcpSecretManagerParameters;
 import tech.pegasys.web3signer.signing.config.KeystoresParameters;
 
 import java.nio.file.Path;
@@ -42,6 +43,7 @@ public class SignerConfiguration {
   private final boolean metricsEnabled;
   private final Optional<AzureKeyVaultParameters> azureKeyVaultParameters;
   private final Optional<AwsVaultParameters> awsSecretsManagerParameters;
+  private final Optional<GcpSecretManagerParameters> gcpSecretManagerParameters;
   private final Optional<KeystoresParameters> keystoresParameters;
   private final Optional<TlsOptions> serverTlsOptions;
   private final Optional<TlsCertificateDefinition> overriddenCaTrustStore;
@@ -70,7 +72,6 @@ public class SignerConfiguration {
   private final Optional<Long> denebForkEpoch;
   private final Optional<String> network;
   private final boolean keyManagerApiEnabled;
-  private final Optional<String> trustedSetup;
   private Optional<WatermarkRepairParameters> watermarkRepairParameters;
   private int downstreamHttpPort;
   private Optional<ClientTlsOptions> downstreamTlsOptions;
@@ -90,6 +91,7 @@ public class SignerConfiguration {
       final boolean metricsEnabled,
       final Optional<AzureKeyVaultParameters> azureKeyVaultParameters,
       final Optional<AwsVaultParameters> awsSecretsManagerParameters,
+      final Optional<GcpSecretManagerParameters> gcpSecretManagerParameters,
       final Optional<KeystoresParameters> keystoresParameters,
       final Optional<TlsOptions> serverTlsOptions,
       final Optional<TlsCertificateDefinition> overriddenCaTrustStore,
@@ -121,7 +123,6 @@ public class SignerConfiguration {
       final int downstreamHttpPort,
       final Optional<ClientTlsOptions> downstreamTlsOptions,
       final ChainIdProvider chainIdProvider,
-      final Optional<String> trustedSetup,
       final Optional<KeystoresParameters> v3KeystoresBulkloadParameters) {
     this.hostname = hostname;
     this.logLevel = logLevel;
@@ -134,6 +135,7 @@ public class SignerConfiguration {
     this.metricsEnabled = metricsEnabled;
     this.azureKeyVaultParameters = azureKeyVaultParameters;
     this.awsSecretsManagerParameters = awsSecretsManagerParameters;
+    this.gcpSecretManagerParameters = gcpSecretManagerParameters;
     this.keystoresParameters = keystoresParameters;
     this.serverTlsOptions = serverTlsOptions;
     this.overriddenCaTrustStore = overriddenCaTrustStore;
@@ -165,7 +167,6 @@ public class SignerConfiguration {
     this.downstreamHttpPort = downstreamHttpPort;
     this.downstreamTlsOptions = downstreamTlsOptions;
     this.chainIdProvider = chainIdProvider;
-    this.trustedSetup = trustedSetup;
     this.v3KeystoresBulkloadParameters = v3KeystoresBulkloadParameters;
   }
 
@@ -223,6 +224,10 @@ public class SignerConfiguration {
 
   public Optional<AwsVaultParameters> getAwsParameters() {
     return awsSecretsManagerParameters;
+  }
+
+  public Optional<GcpSecretManagerParameters> getGcpParameters() {
+    return gcpSecretManagerParameters;
   }
 
   public Optional<KeystoresParameters> getKeystoresParameters() {
@@ -343,10 +348,6 @@ public class SignerConfiguration {
 
   public ChainIdProvider getChainIdProvider() {
     return chainIdProvider;
-  }
-
-  public Optional<String> getTrustedSetup() {
-    return trustedSetup;
   }
 
   public Optional<KeystoresParameters> getV3KeystoresBulkloadParameters() {

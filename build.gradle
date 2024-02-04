@@ -25,7 +25,7 @@ buildscript {
   }
   dependencies {
     classpath 'tech.pegasys.internal.license.reporter:license-reporter:1.0.1'
-    classpath 'org.owasp:dependency-check-gradle:8.2.1'
+    classpath 'org.owasp:dependency-check-gradle:9.0.2'
   }
 }
 
@@ -166,6 +166,12 @@ allprojects {
     skipProjects = [
       ':acceptance-tests'
     ]
+    analyzers {
+      retirejs {
+        enabled = false
+      }
+      assemblyEnabled = false
+    }
   }
 
   tasks.withType(JavaCompile) {
@@ -372,6 +378,8 @@ applicationDefaultJvmArgs = [
   "--add-opens",
   "java.base/java.nio=ALL-UNNAMED",
   "-Dio.netty.tryReflectionSetAccessible=true",
+  "--add-exports",
+  "jdk.crypto.cryptoki/sun.security.pkcs11.wrapper=ALL-UNNAMED",
 ]
 
 run {

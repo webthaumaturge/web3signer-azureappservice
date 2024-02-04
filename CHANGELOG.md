@@ -1,5 +1,39 @@
 # Changelog
 
+## Next version
+
+### Bugs fixed
+- Ensure that Web3Signer stops the http server when a sigterm is received
+
+## 24.1.1
+
+This is an optional release for mainnet Ethereum and it includes the updated network configuration for the Sepolia, Holesky and Chiado Deneb forks.
+
+## 24.1.0
+
+This is an optional release for mainnet Ethereum and it includes the updated network configuration for the Goerli Deneb fork.
+
+### Upcoming Breaking Changes
+- `--Xworker-pool-size` cli option will be removed in a future release. This option has been replaced with `--vertx-worker-pool-size`.
+
+### Bugs fixed
+- Update reactor-netty-http to fix CVE-2023-34062
+
+### Features Added
+- Add Deneb configuration for Goerli [#960](https://github.com/Consensys/web3signer/pull/960)
+
+## 23.11.0
+### Upcoming Breaking Changes
+- `--Xworker-pool-size` cli option will be removed in a future release. This option has been replaced with `--vertx-worker-pool-size`.
+
+### Bugs fixed
+- Update netty to fix CVE-2023-44487
+
+### Features Added
+- Google Cloud Secret Manager bulk loading support for BLS keys in eth2 mode via PR [#928](https://github.com/Consensys/web3signer/pull/928) contributed by [Sergey Kisel](https://github.com/skisel-bt).
+- Removed hidden option `--Xtrusted-setup` as Web3Signer does not need KZG trusted setup file anymore.
+- Make Vert.x worker pool size configurable using cli option `--vertx-worker-pool-size` (replaces the now deprecated: `--Xworker-pool-size`). [#920](https://github.com/Consensys/web3signer/pull/920)
+
 ## 23.9.1
 
 ### Breaking Changes

@@ -27,6 +27,7 @@ import tech.pegasys.teku.spec.SpecMilestone;
 import tech.pegasys.teku.spec.networks.Eth2Network;
 import tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParameters;
 import tech.pegasys.web3signer.commandline.PicoCliEth2AzureKeyVaultParameters;
+import tech.pegasys.web3signer.commandline.PicoCliGcpSecretManagerParameters;
 import tech.pegasys.web3signer.commandline.PicoCliSlashingProtectionParameters;
 import tech.pegasys.web3signer.commandline.config.PicoKeystoresParameters;
 import tech.pegasys.web3signer.common.config.AwsAuthenticationMode;
@@ -126,15 +127,6 @@ public class Eth2SubCommand extends ModeSubCommand {
   private UInt64 denebForkEpoch;
 
   @CommandLine.Option(
-      names = {"--Xtrusted-setup"},
-      hidden = true,
-      paramLabel = "<STRING>",
-      description =
-          "The trusted setup which is needed for KZG commitments. Only required when creating a custom network. This value should be a file or URL pointing to a trusted setup.",
-      arity = "1")
-  private String trustedSetup = null; // Depends on network configuration
-
-  @CommandLine.Option(
       names = {"--key-manager-api-enabled", "--enable-key-manager-api"},
       paramLabel = "<BOOL>",
       description = "Enable the key manager API to manage key stores (default: ${DEFAULT-VALUE}).",
@@ -145,6 +137,7 @@ public class Eth2SubCommand extends ModeSubCommand {
   @Mixin private PicoCliEth2AzureKeyVaultParameters azureKeyVaultParameters;
   @Mixin private PicoKeystoresParameters keystoreParameters;
   @Mixin private PicoCliAwsSecretsManagerParameters awsSecretsManagerParameters;
+  @Mixin private PicoCliGcpSecretManagerParameters gcpSecretManagerParameters;
   private tech.pegasys.teku.spec.Spec eth2Spec;
 
   public Eth2SubCommand() {
@@ -161,6 +154,7 @@ public class Eth2SubCommand extends ModeSubCommand {
         azureKeyVaultParameters,
         keystoreParameters,
         awsSecretsManagerParameters,
+        gcpSecretManagerParameters,
         eth2Spec,
         isKeyManagerApiEnabled);
   }
@@ -203,9 +197,6 @@ public class Eth2SubCommand extends ModeSubCommand {
     if (denebForkEpoch != null) {
       builder.denebForkEpoch(denebForkEpoch);
     }
-    if (trustedSetup != null) {
-      builder.trustedSetup(trustedSetup);
-    }
     return builder.build();
   }
 
@@ -236,6 +227,23 @@ public class Eth2SubCommand extends ModeSubCommand {
     validateAzureParameters();
     validateKeystoreParameters(keystoreParameters);
     validateAwsSecretsManageParameters();
+    validateGcpSecretManagerParameters();
+  }
+
+  private void validateGcpSecretManagerParameters() {
+    if (gcpSecretManagerParameters.isEnabled()) {
+      final List<String> specifiedAuthModeMissingFields =
+          missingGcpSecretManagerParametersForSpecified();
+      if (!specifiedAuthModeMissingFields.isEmpty()) {
+        final String errorMsg =
+            String.format(
+                "%s=%s, but the following parameters were missing [%s].",
+                PicoCliGcpSecretManagerParameters.GCP_SECRETS_ENABLED_OPTION,
+                true,
+                String.join(", ", specifiedAuthModeMissingFields));
+        throw new ParameterException(commandSpec.commandLine(), errorMsg);
+      }
+    }
   }
 
   private void validateAzureParameters() {
@@ -300,6 +308,14 @@ public class Eth2SubCommand extends ModeSubCommand {
         throw new ParameterException(commandSpec.commandLine(), errorMsg);
       }
     }
+  }
+
+  private List<String> missingGcpSecretManagerParametersForSpecified() {
+    final List<String> missingFields = Lists.newArrayList();
+    if (gcpSecretManagerParameters.getProjectId() == null) {
+      missingFields.add(PicoCliGcpSecretManagerParameters.GCP_PROJECT_ID_OPTION);
+    }
+    return missingFields;
   }
 
   private List<String> missingAwsSecretsManagerParametersForSpecified() {
