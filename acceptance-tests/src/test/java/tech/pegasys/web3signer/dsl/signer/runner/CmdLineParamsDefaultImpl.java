@@ -134,6 +134,10 @@ public class CmdLineParamsDefaultImpl implements CmdLineParamsBuilder {
       signerConfig
           .getGcpParameters()
           .ifPresent(gcpParams -> params.addAll(gcpSecretManagerBulkLoadingOptions(gcpParams)));
+
+      if (signerConfig.isSigningExtEnabled()) {
+        params.add("--Xsigning-ext-enabled=true");
+      }
     } else if (signerConfig.getMode().equals("eth1")) {
       params.add("--downstream-http-port");
       params.add(Integer.toString(signerConfig.getDownstreamHttpPort()));
@@ -295,6 +299,11 @@ public class CmdLineParamsDefaultImpl implements CmdLineParamsBuilder {
     if (signerConfig.getDenebForkEpoch().isPresent()) {
       params.add("--Xnetwork-deneb-fork-epoch");
       params.add(Long.toString(signerConfig.getDenebForkEpoch().get()));
+    }
+
+    if (signerConfig.getElectraForkEpoch().isPresent()) {
+      params.add("--Xnetwork-electra-fork-epoch");
+      params.add(Long.toString(signerConfig.getElectraForkEpoch().get()));
     }
 
     if (signerConfig.getNetwork().isPresent()) {

@@ -63,7 +63,7 @@ public class BlsSigningAcceptanceTest extends SigningAcceptanceTestBase {
   private static final BLSKeyPair KEY_PAIR = new BLSKeyPair(KEY);
   private static final BLSPublicKey PUBLIC_KEY = KEY_PAIR.getPublicKey();
 
-  @ParameterizedTest
+  @ParameterizedTest(name = "{index} - {0} Signing")
   @EnumSource
   public void signDataWithKeyLoadedFromUnencryptedFile(final ArtifactType artifactType)
       throws JsonProcessingException {
@@ -253,7 +253,7 @@ public class BlsSigningAcceptanceTest extends SigningAcceptanceTestBase {
             request.blockRequest(),
             request.attestation(),
             request.aggregationSlot(),
-            request.aggregateAndProof(),
+            request.aggregateAndProofV2(),
             request.voluntaryExit(),
             request.randaoReveal(),
             request.deposit(),
@@ -291,7 +291,7 @@ public class BlsSigningAcceptanceTest extends SigningAcceptanceTestBase {
             request.blockRequest(),
             request.attestation(),
             request.aggregationSlot(),
-            request.aggregateAndProof(),
+            request.aggregateAndProofV2(),
             request.voluntaryExit(),
             request.randaoReveal(),
             request.deposit(),
@@ -341,8 +341,11 @@ public class BlsSigningAcceptanceTest extends SigningAcceptanceTestBase {
 
   private void setupMinimalWeb3Signer(final ArtifactType artifactType) {
     switch (artifactType) {
-      case BLOCK_V2, SYNC_COMMITTEE_MESSAGE, SYNC_COMMITTEE_SELECTION_PROOF, SYNC_COMMITTEE_CONTRIBUTION_AND_PROOF -> setupEth2Signer(
-          Eth2Network.MINIMAL, SpecMilestone.ALTAIR);
+      case BLOCK_V2,
+              SYNC_COMMITTEE_MESSAGE,
+              SYNC_COMMITTEE_SELECTION_PROOF,
+              SYNC_COMMITTEE_CONTRIBUTION_AND_PROOF ->
+          setupEth2Signer(Eth2Network.MINIMAL, SpecMilestone.ALTAIR);
       default -> setupEth2Signer(Eth2Network.MINIMAL, SpecMilestone.PHASE0);
     }
   }

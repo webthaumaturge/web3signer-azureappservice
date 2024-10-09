@@ -40,6 +40,7 @@ import tech.pegasys.teku.spec.logic.common.util.SyncCommitteeUtil;
 import tech.pegasys.teku.spec.signatures.SigningRootUtil;
 import tech.pegasys.teku.spec.util.DataStructureUtil;
 import tech.pegasys.web3signer.core.service.http.ArtifactType;
+import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.AggregateAndProofV2;
 import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.AggregationSlot;
 import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.DepositMessage;
 import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.Eth2SigningRequestBody;
@@ -104,7 +105,9 @@ public class Eth2RequestUtils {
       case AGGREGATION_SLOT:
         return createAggregationSlot();
       case AGGREGATE_AND_PROOF:
-        return createAggregateAndProof();
+        return createAggregateAndProof(true);
+      case AGGREGATE_AND_PROOF_V2:
+        return createAggregateAndProof(false);
       case SYNC_COMMITTEE_MESSAGE:
         return createSyncCommitteeMessageRequest();
       case SYNC_COMMITTEE_SELECTION_PROOF:
@@ -118,22 +121,25 @@ public class Eth2RequestUtils {
     }
   }
 
-  private static Eth2SigningRequestBody createAggregateAndProof() {
+  private static Eth2SigningRequestBody createAggregateAndProof(final boolean isLegacy) {
     final ForkInfo forkInfo = forkInfo();
     final Bytes sszBytes = Bytes.of(0, 0, 1, 1);
+    final AttestationData attestationData =
+        new AttestationData(
+            UInt64.ZERO,
+            UInt64.ZERO,
+            Bytes32.fromHexString(
+                "0x100814c335d0ced5014cfa9d2e375e6d9b4e197381f8ce8af0473200fdc917fd"),
+            new Checkpoint(UInt64.ZERO, Bytes32.ZERO),
+            new Checkpoint(
+                UInt64.ZERO,
+                Bytes32.fromHexString(
+                    "0x100814c335d0ced5014cfa9d2e375e6d9b4e197381f8ce8af0473200fdc917fd")));
     final Attestation attestation =
         new Attestation(
             sszBytes,
-            new AttestationData(
-                UInt64.ZERO,
-                UInt64.ZERO,
-                Bytes32.fromHexString(
-                    "0x100814c335d0ced5014cfa9d2e375e6d9b4e197381f8ce8af0473200fdc917fd"),
-                new Checkpoint(UInt64.ZERO, Bytes32.ZERO),
-                new Checkpoint(
-                    UInt64.ZERO,
-                    Bytes32.fromHexString(
-                        "0x100814c335d0ced5014cfa9d2e375e6d9b4e197381f8ce8af0473200fdc917fd"))),
+            attestationData,
+            null, // committee_bits in pre-Electra Attestation must be null
             BLSSignature.fromHexString(
                 "0xa627242e4a5853708f4ebf923960fb8192f93f2233cd347e05239d86dd9fb66b721ceec1baeae6647f498c9126074f1101a87854d674b6eebc220fd8c3d8405bdfd8e286b707975d9e00a56ec6cbbf762f23607d490f0bbb16c3e0e483d51875"));
     final BLSSignature selectionProof =
@@ -145,10 +151,11 @@ public class Eth2RequestUtils {
         SIGNING_ROOT_UTIL.signingRootForSignAggregateAndProof(
             aggregateAndProof.asInternalAggregateAndProof(SPEC), forkInfo.asInternalForkInfo());
     return Eth2SigningRequestBodyBuilder.anEth2SigningRequestBody()
-        .withType(ArtifactType.AGGREGATE_AND_PROOF)
+        .withType(isLegacy ? ArtifactType.AGGREGATE_AND_PROOF : ArtifactType.AGGREGATE_AND_PROOF_V2)
         .withSigningRoot(signingRoot)
         .withForkInfo(forkInfo)
-        .withAggregateAndProof(aggregateAndProof)
+        .withAggregateAndProofV2(
+            new AggregateAndProofV2(isLegacy ? null : SpecMilestone.PHASE0, aggregateAndProof))
         .build();
   }
 

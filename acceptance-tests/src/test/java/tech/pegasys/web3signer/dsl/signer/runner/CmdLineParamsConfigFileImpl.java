@@ -158,6 +158,11 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
           .getGcpParameters()
           .ifPresent(gcpParameters -> yamlConfig.append(gcpBulkLoadingOptions(gcpParameters)));
 
+      if (signerConfig.isSigningExtEnabled()) {
+        yamlConfig.append(
+            String.format(YAML_BOOLEAN_FMT, "eth2.Xsigning-ext-enabled", Boolean.TRUE));
+      }
+
       final CommandArgs subCommandArgs = createSubCommandArgs();
       params.addAll(subCommandArgs.params);
       yamlConfig.append(subCommandArgs.yamlConfig);
@@ -487,6 +492,14 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
               YAML_NUMERIC_FMT,
               "eth2.Xnetwork-deneb-fork-epoch",
               signerConfig.getDenebForkEpoch().get()));
+    }
+
+    if (signerConfig.getElectraForkEpoch().isPresent()) {
+      yamlConfig.append(
+          String.format(
+              YAML_NUMERIC_FMT,
+              "eth2.Xnetwork-electra-fork-epoch",
+              signerConfig.getElectraForkEpoch().get()));
     }
 
     if (signerConfig.getNetwork().isPresent()) {

@@ -70,6 +70,7 @@ public class SignerConfiguration {
   private final Optional<Long> bellatrixForkEpoch;
   private final Optional<Long> capellaForkEpoch;
   private final Optional<Long> denebForkEpoch;
+  private final Optional<Long> electraForkEpoch;
   private final Optional<String> network;
   private final boolean keyManagerApiEnabled;
   private Optional<WatermarkRepairParameters> watermarkRepairParameters;
@@ -78,6 +79,8 @@ public class SignerConfiguration {
   private final Duration startupTimeout;
   private final ChainIdProvider chainIdProvider;
   private final Optional<KeystoresParameters> v3KeystoresBulkloadParameters;
+
+  private final boolean signingExtEnabled;
 
   public SignerConfiguration(
       final String hostname,
@@ -117,13 +120,15 @@ public class SignerConfiguration {
       final Optional<Long> bellatrixForkEpoch,
       final Optional<Long> capellaForkEpoch,
       final Optional<Long> denebForkEpoch,
+      final Optional<Long> electraForkEpoch,
       final Optional<String> network,
       final boolean keyManagerApiEnabled,
       final Optional<WatermarkRepairParameters> watermarkRepairParameters,
       final int downstreamHttpPort,
       final Optional<ClientTlsOptions> downstreamTlsOptions,
       final ChainIdProvider chainIdProvider,
-      final Optional<KeystoresParameters> v3KeystoresBulkloadParameters) {
+      final Optional<KeystoresParameters> v3KeystoresBulkloadParameters,
+      final boolean signingExtEnabled) {
     this.hostname = hostname;
     this.logLevel = logLevel;
     this.httpRpcPort = httpRpcPort;
@@ -161,6 +166,7 @@ public class SignerConfiguration {
     this.bellatrixForkEpoch = bellatrixForkEpoch;
     this.capellaForkEpoch = capellaForkEpoch;
     this.denebForkEpoch = denebForkEpoch;
+    this.electraForkEpoch = electraForkEpoch;
     this.network = network;
     this.keyManagerApiEnabled = keyManagerApiEnabled;
     this.watermarkRepairParameters = watermarkRepairParameters;
@@ -168,6 +174,7 @@ public class SignerConfiguration {
     this.downstreamTlsOptions = downstreamTlsOptions;
     this.chainIdProvider = chainIdProvider;
     this.v3KeystoresBulkloadParameters = v3KeystoresBulkloadParameters;
+    this.signingExtEnabled = signingExtEnabled;
   }
 
   public String hostname() {
@@ -318,6 +325,10 @@ public class SignerConfiguration {
     return denebForkEpoch;
   }
 
+  public Optional<Long> getElectraForkEpoch() {
+    return electraForkEpoch;
+  }
+
   public Optional<String> getNetwork() {
     return network;
   }
@@ -352,5 +363,9 @@ public class SignerConfiguration {
 
   public Optional<KeystoresParameters> getV3KeystoresBulkloadParameters() {
     return v3KeystoresBulkloadParameters;
+  }
+
+  public boolean isSigningExtEnabled() {
+    return signingExtEnabled;
   }
 }
