@@ -127,11 +127,37 @@ public class Eth2SubCommand extends ModeSubCommand {
   private UInt64 denebForkEpoch;
 
   @CommandLine.Option(
+      names = {"--Xnetwork-electra-fork-epoch"},
+      hidden = true,
+      paramLabel = "<epoch>",
+      description = "Override the Electra fork activation epoch.",
+      arity = "1",
+      converter = UInt64Converter.class)
+  private UInt64 electraForkEpoch;
+
+  @CommandLine.Option(
+      names = {"--Xtrusted-setup"},
+      hidden = true,
+      paramLabel = "<STRING>",
+      description =
+          "The trusted setup which is needed for KZG commitments. Only required when creating a custom network. This value should be a file or URL pointing to a trusted setup.",
+      arity = "1")
+  private String trustedSetup = null; // Depends on network configuration
+
+  @CommandLine.Option(
       names = {"--key-manager-api-enabled", "--enable-key-manager-api"},
       paramLabel = "<BOOL>",
       description = "Enable the key manager API to manage key stores (default: ${DEFAULT-VALUE}).",
       arity = "1")
   private boolean isKeyManagerApiEnabled = false;
+
+  @CommandLine.Option(
+      names = "--Xsigning-ext-enabled",
+      description = "Set to true to enable signing extensions.",
+      paramLabel = "<BOOL>",
+      arity = "1",
+      hidden = true)
+  private boolean signingExtEnabled = false;
 
   @Mixin private PicoCliSlashingProtectionParameters slashingProtectionParameters;
   @Mixin private PicoCliEth2AzureKeyVaultParameters azureKeyVaultParameters;
@@ -156,7 +182,8 @@ public class Eth2SubCommand extends ModeSubCommand {
         awsSecretsManagerParameters,
         gcpSecretManagerParameters,
         eth2Spec,
-        isKeyManagerApiEnabled);
+        isKeyManagerApiEnabled,
+        signingExtEnabled);
   }
 
   private void logNetworkSpecInformation() {
@@ -196,6 +223,12 @@ public class Eth2SubCommand extends ModeSubCommand {
     }
     if (denebForkEpoch != null) {
       builder.denebForkEpoch(denebForkEpoch);
+    }
+    if (electraForkEpoch != null) {
+      builder.electraForkEpoch(electraForkEpoch);
+    }
+    if (trustedSetup != null) {
+      builder.trustedSetup(trustedSetup);
     }
     return builder.build();
   }

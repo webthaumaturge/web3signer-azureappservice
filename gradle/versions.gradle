@@ -13,10 +13,10 @@
 
 dependencyManagement {
   dependencies {
-    dependency 'com.fasterxml.jackson.core:jackson-databind:2.16.0'
-    dependency 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.16.0'
+    dependency 'com.fasterxml.jackson.core:jackson-databind:2.17.2'
+    dependency 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.17.2'
 
-    dependencySet(group: 'com.google.errorprone', version: '2.21.1') {
+    dependencySet(group: 'com.google.errorprone', version: '2.29.2') {
       entry 'error_prone_annotation'
       entry 'error_prone_check_api'
       entry 'error_prone_core'
@@ -25,15 +25,16 @@ dependencyManagement {
 
     dependency 'tech.pegasys.tools.epchecks:errorprone-checks:1.1.1'
 
-    dependency 'com.google.guava:guava:32.0.1-jre'
+    dependency 'com.google.guava:guava:33.2.1-jre'
 
     dependency 'commons-cli:commons-cli:1.5.0'
-    dependency 'commons-io:commons-io:2.11.0'
-    dependency 'org.apache.commons:commons-lang3:3.12.0'
+    dependency 'commons-io:commons-io:2.16.1'
+    dependency 'org.apache.commons:commons-lang3:3.15.0'
+    dependency 'commons-logging:commons-logging:1.3.3'
 
-    dependency 'info.picocli:picocli:4.6.2'
+    dependency 'info.picocli:picocli:4.7.6'
 
-    dependencySet(group: 'io.vertx', version: '4.4.6') {
+    dependencySet(group: 'io.vertx', version: '4.5.10') {
       entry 'vertx-codegen'
       entry ('vertx-core') {
         exclude group: 'io.netty', name: 'netty-handler'
@@ -47,7 +48,7 @@ dependencyManagement {
 
     dependency 'javax.activation:activation:1.1.1'
 
-    dependencySet(group: 'org.apache.logging.log4j', version: '2.20.0') {
+    dependencySet(group: 'org.apache.logging.log4j', version: '2.23.1') {
       entry 'log4j-api'
       entry 'log4j'
       entry 'log4j-core'
@@ -62,35 +63,36 @@ dependencyManagement {
       entry 'tuweni-io'
     }
 
-    dependency 'org.assertj:assertj-core:3.22.0'
+    dependency 'org.assertj:assertj-core:3.26.3'
 
-    dependency 'org.awaitility:awaitility:4.1.1'
+    dependency 'org.awaitility:awaitility:4.2.1'
 
-    dependencySet(group: 'org.bouncycastle', version: '1.74') {
+    dependencySet(group: 'org.bouncycastle', version: '1.78.1') {
       entry 'bcpkix-jdk18on'
       entry 'bcprov-jdk18on'
     }
 
-    dependencySet(group: 'org.junit.jupiter', version: '5.8.2') {
+    dependencySet(group: 'org.junit.jupiter', version: '5.10.3') {
       entry 'junit-jupiter-api'
       entry 'junit-jupiter-engine'
       entry 'junit-jupiter-params'
     }
+    dependency 'org.junit.vintage:junit-vintage-engine:5.10.3'
 
     dependency 'org.mock-server:mockserver-netty:5.15.0'
 
-    dependencySet(group: 'org.mockito', version: '4.2.0') {
+    dependencySet(group: 'org.mockito', version: '5.12.0') {
       entry 'mockito-core'
       entry 'mockito-inline'
       entry 'mockito-junit-jupiter'
     }
 
-    dependency 'org.hyperledger.besu:plugin-api:24.1.2'
-    dependency 'org.hyperledger.besu.internal:metrics-core:24.1.2'
+    dependency "org.hyperledger.besu:plugin-api:${besuVersion}"
+    dependency "org.hyperledger.besu.internal:metrics-core:${besuVersion}"
 
     dependency 'org.xipki.iaik:sunpkcs11-wrapper:1.4.10'
 
-    dependencySet(group: 'tech.pegasys.teku.internal', version: '24.2.0') {
+    dependencySet(group: 'tech.pegasys.teku.internal', version: '24.8.0') {
       entry ('bls') {
         exclude group: 'org.bouncycastle', name: 'bcprov-jdk15on'
       }
@@ -108,11 +110,11 @@ dependencyManagement {
       entry 'jackson'
     }
 
-    dependency 'tech.pegasys:jblst:0.3.8'
+    dependency 'tech.pegasys:jblst:0.3.12'
 
-    dependency 'io.rest-assured:rest-assured:4.4.0'
+    dependency 'io.rest-assured:rest-assured:5.5.0'
     dependency 'org.zeroturnaround:zt-exec:1.12'
-    dependencySet(group: 'org.web3j', version: '4.10.2') {
+    dependencySet(group: 'org.web3j', version: '4.12.0') {
       entry 'besu'
       entry ('core') {
         exclude group: 'com.github.jnr', name: 'jnr-unixsocket'
@@ -126,31 +128,32 @@ dependencyManagement {
     dependency 'com.github.arteam:simple-json-rpc-server:1.3'
     dependency 'com.github.arteam:simple-json-rpc-client:1.3'
 
-    dependencySet(group: 'com.azure', version: '4.7.3') {
-      entry 'azure-security-keyvault-secrets'
-      entry 'azure-security-keyvault-keys'
-    }
-    dependency 'com.azure:azure-identity:1.11.1'
+    dependency 'com.azure:azure-security-keyvault-secrets:4.8.4'
+    dependency 'com.azure:azure-security-keyvault-keys:4.8.5'
+    dependency 'com.azure:azure-identity:1.13.1'
 
-    dependency 'com.zaxxer:HikariCP:5.0.1'
-    dependency 'org.postgresql:postgresql:42.7.2'
+    dependency 'com.zaxxer:HikariCP:5.1.0'
+    dependency 'org.postgresql:postgresql:42.7.3'
 
-    dependencySet(group: 'org.jdbi', version: '3.36.0') {
+    dependencySet(group: 'org.jdbi', version: '3.45.2') {
       entry 'jdbi3-core'
       entry 'jdbi3-sqlobject'
       entry 'jdbi3-testing'
     }
 
-    dependency 'org.flywaydb:flyway-core:6.1.1'
+    dependency 'org.flywaydb:flyway-core:10.16.0'
+    dependency 'org.flywaydb:flyway-database-postgresql:10.16.0'
 
-    dependency 'com.google.cloud:google-cloud-secretmanager:2.29.0'
-    dependency 'io.zonky.test.postgres:embedded-postgres-binaries-bom:11.19.0'
-    dependency 'io.zonky.test:embedded-postgres:2.0.3'
+    dependency 'com.google.cloud:google-cloud-secretmanager:2.51.0'
+    dependency 'com.google.protobuf:protobuf-java:3.25.5' // fixes CVE-2024-7254 - transitive from google-cloud-secretmanager
+
+    dependency 'io.zonky.test.postgres:embedded-postgres-binaries-bom:11.22.1'
+    dependency 'io.zonky.test:embedded-postgres:2.0.7'
 
     dependency 'com.github.ipld:java-cid:1.3.3'
     dependency 'net.jodah:failsafe:2.4.4'
 
-    dependencySet(group: 'software.amazon.awssdk', version: '2.20.101') {
+    dependencySet(group: 'software.amazon.awssdk', version: '2.26.21') {
       entry 'bom'
       entry 'auth'
       entry 'secretsmanager'
@@ -158,15 +161,15 @@ dependencyManagement {
       entry 'kms'
     }
 
-    dependency 'io.rest-assured:rest-assured:4.4.0'
+    dependency 'io.rest-assured:rest-assured:5.5.0'
 
     /*
       com.squareup.okhttp3:logging-interceptor:4.9.0 // CVE-2021-0341
       \--- org.web3j:core:4.9.2
      */
-    dependency 'com.squareup.okhttp3:logging-interceptor:4.11.0'
+    dependency 'com.squareup.okhttp3:logging-interceptor:4.12.0'
 
-    dependencySet(group: 'com.squareup.okhttp3', version: '4.11.0') {
+    dependencySet(group: 'com.squareup.okhttp3', version: '4.12.0') {
       entry 'okhttp'
       entry 'mockwebserver'
     }
@@ -222,27 +225,6 @@ dependencyManagement {
               +--- com.azure:azure-identity:1.11.1
      */
     dependency 'com.nimbusds:nimbus-jose-jwt:9.37.3'
-
-    // besu 23.10.1 uses grpc 1.53.0 so vulnerable to
-    // CVE-2023-32731, CVE-2023-33953, CVE-2023-44487, CVE-2023-4785
-    dependencySet(group: 'io.grpc', version: '1.59.1') {
-      entry 'grpc-all'
-      entry 'grpc-core'
-      entry 'grpc-netty'
-      entry 'grpc-stub'
-      entry 'grpc-alts'
-      entry 'grpc-api'
-      entry 'grpc-auth'
-      entry 'grpc-context'
-      entry 'grpc-googleapis'
-      entry 'grpc-grpclb'
-      entry 'grpc-inprocess'
-      entry 'grpc-netty-shaded'
-      entry 'grpc-protobuf'
-      entry 'grpc-protobuf-lite'
-      entry 'grpc-services'
-      entry 'grpc-xds'
-    }
 
     // used in tests to assert log message
     dependency 'de.neuland-bfi:assertj-logging-log4j:0.5.0'

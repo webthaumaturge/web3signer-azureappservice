@@ -72,6 +72,7 @@ public class SignerConfigurationBuilder {
   private Long bellatrixForkEpoch = null;
   private Long capellaForkEpoch = null;
   private Long denebForkEpoch = null;
+  private Long electraForkEpoch = null;
   private String network = null;
   private boolean keyManagerApiEnabled = false;
   private KeystoresParameters keystoresParameters;
@@ -82,6 +83,8 @@ public class SignerConfigurationBuilder {
   private ChainIdProvider chainIdProvider = new ConfigurationChainId(DEFAULT_CHAIN_ID);
 
   private KeystoresParameters v3KeystoresBulkloadParameters;
+
+  private boolean signingExtEnabled;
 
   public SignerConfigurationBuilder withLogLevel(final Level logLevel) {
     this.logLevel = logLevel;
@@ -270,6 +273,11 @@ public class SignerConfigurationBuilder {
     return this;
   }
 
+  public SignerConfigurationBuilder withElectraForkEpoch(final long electraForkEpoch) {
+    this.electraForkEpoch = electraForkEpoch;
+    return this;
+  }
+
   public SignerConfigurationBuilder withNetwork(final String network) {
     this.network = network;
     return this;
@@ -318,6 +326,11 @@ public class SignerConfigurationBuilder {
     return this;
   }
 
+  public SignerConfigurationBuilder withSigningExtEnabled(final boolean signingExtEnabled) {
+    this.signingExtEnabled = signingExtEnabled;
+    return this;
+  }
+
   public SignerConfiguration build() {
     if (mode == null) {
       throw new IllegalArgumentException("Mode cannot be null");
@@ -360,12 +373,14 @@ public class SignerConfigurationBuilder {
         Optional.ofNullable(bellatrixForkEpoch),
         Optional.ofNullable(capellaForkEpoch),
         Optional.ofNullable(denebForkEpoch),
+        Optional.ofNullable(electraForkEpoch),
         Optional.ofNullable(network),
         keyManagerApiEnabled,
         Optional.ofNullable(watermarkRepairParameters),
         downstreamHttpPort,
         Optional.ofNullable(downstreamTlsOptions),
         chainIdProvider,
-        Optional.ofNullable(v3KeystoresBulkloadParameters));
+        Optional.ofNullable(v3KeystoresBulkloadParameters),
+        signingExtEnabled);
   }
 }

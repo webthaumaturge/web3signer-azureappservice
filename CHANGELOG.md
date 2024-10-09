@@ -1,11 +1,41 @@
 # Changelog
 
-## Next Version
+## Next Release
+
+### Features Added
+- Java 21 for build and runtime. [#995](https://github.com/Consensys/web3signer/pull/995)
+- Electra fork support. [#1020](https://github.com/Consensys/web3signer/pull/1020) and [#1023](https://github.com/Consensys/web3signer/pull/1023)
 
 ### Bugs fixed
-- Update postgresql to fix CVE-2024-1597
+- Override protobuf-java to 3.25.5 which is a transitive dependency from google-cloud-secretmanager. It fixes CVE-2024-7254.
+
+---
+## 24.6.0
+
+### Upcoming Breaking Changes
+- This is the last Web3Signer release to use Java 17. Web3Signer will start mandating Java 21 for build and runtime after 
+this release. The Web3Signer docker image will also use Java 21, however, binary distributions (.tar.gz/.zip) will 
+require Java 21 to be available on the host machine.
+- This is the last Web3Signer release to use the "filecoin" mode. The "filecoin" mode will be removed in a future release.
+
+### Breaking Changes
+- Use Java 21 for build and runtime. Remove Java 17 variant of docker image. zip/tar.gz distributions will require Java 21 or above to run Web3Signer.
+- The Web3Signer metrics are now compatible with OpenMetrics data model. This results in the names of counter metrics to append `_total` suffix. Users may need to update their dashboards to reflect these changes. 
+
+### Features Added
+- Added endpoint `/api/v1/eth2/ext/sign/:identifier` which is enabled using cli option `--Xsigning-ext-enabled=true`. 
+This endpoint allows signing of additional data not covered by the remoting API specs. [#982](https://github.com/Consensys/web3signer/pull/982)
+
+### Bugs fixed
+- Update transitive dependency threetenbp and google cloud secretmanager library to fix CVE-2024-23082, CVE-2024-23081
+- Update bouncycastle libraries to fix CVE-2024-29857, CVE-2024-30171, CVE-2024-30172
+- Update Teku libraries to 24.3.1
+- Update Vert.x to 4.5.7 (which include fixes for CVE-2024-1023)
+- Fix Host Allow List handler to handle empty host header
+- Update Postgresql JDBC driver to fix CVE-2024-1597
 - Fix cached gvr to be thread-safe during first boot. [#978](https://github.com/Consensys/web3signer/issues/978)
 
+---
 ## 24.2.0
 
 This is a required update for Mainnet users containing the configuration for the Deneb upgrade on March 13th. This update is required for Gnosis Deneb network upgrade on March 11th. For all other networks, this update is optional.

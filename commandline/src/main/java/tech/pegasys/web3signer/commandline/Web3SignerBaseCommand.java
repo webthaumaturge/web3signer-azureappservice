@@ -222,7 +222,7 @@ public class Web3SignerBaseCommand implements BaseConfig, Runnable {
       paramLabel = INTEGER_FORMAT_HELP)
   private Integer vertxWorkerPoolSize = null;
 
-  @Deprecated
+  @Deprecated(forRemoval = true)
   @Option(names = "--Xworker-pool-size", hidden = true)
   private Integer deprecatedWorkerPoolSize = null;
 
