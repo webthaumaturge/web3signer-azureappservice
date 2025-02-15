@@ -61,7 +61,7 @@ public class EthSignTransactionResultProviderTest {
   private static JsonDecoder jsonDecoder;
   private static long chainId;
 
-  @Mock SignerForIdentifier<SecpArtifactSignature> mockSignerForIdentifier;
+  @Mock SignerForIdentifier mockSignerForIdentifier;
 
   @BeforeAll
   static void beforeAll() {
@@ -108,15 +108,16 @@ public class EthSignTransactionResultProviderTest {
   public void signatureHasTheExpectedFormat() {
     final Credentials cs =
         Credentials.create("0x1618fc3e47aec7e70451256e033b9edb67f4c469258d8e2fbb105552f141ae41");
-    final ECPublicKey key = EthPublicKeyUtils.createPublicKey(cs.getEcKeyPair().getPublicKey());
+    final ECPublicKey key =
+        EthPublicKeyUtils.web3JPublicKeyToECPublicKey(cs.getEcKeyPair().getPublicKey());
     final String addr = Keys.getAddress(EthPublicKeyUtils.toHexString(key));
 
     final BigInteger v = BigInteger.ONE;
     final BigInteger r = BigInteger.TWO;
     final BigInteger s = BigInteger.TEN;
-    doReturn(Optional.of(new SecpArtifactSignature(new Signature(v, r, s))))
+    doReturn(Optional.of(new SecpArtifactSignature(new Signature(v, r, s)).asHex()))
         .when(mockSignerForIdentifier)
-        .signAndGetArtifactSignature(any(String.class), any(Bytes.class));
+        .sign(any(String.class), any(Bytes.class));
     when(mockSignerForIdentifier.isSignerAvailable(any(String.class))).thenReturn(true);
     final EthSignTransactionResultProvider resultProvider =
         new EthSignTransactionResultProvider(chainId, mockSignerForIdentifier, jsonDecoder);
@@ -169,16 +170,17 @@ public class EthSignTransactionResultProviderTest {
   private String executeEthSignTransaction(final JsonObject params) {
     final Credentials cs =
         Credentials.create("0x1618fc3e47aec7e70451256e033b9edb67f4c469258d8e2fbb105552f141ae41");
-    final ECPublicKey key = EthPublicKeyUtils.createPublicKey(cs.getEcKeyPair().getPublicKey());
+    final ECPublicKey key =
+        EthPublicKeyUtils.web3JPublicKeyToECPublicKey(cs.getEcKeyPair().getPublicKey());
     final String addr = Keys.getAddress(EthPublicKeyUtils.toHexString(key));
 
     doAnswer(
             answer -> {
               Bytes data = answer.getArgument(1, Bytes.class);
-              return signDataForKey(data, cs.getEcKeyPair());
+              return signDataForKey(data, cs.getEcKeyPair()).map(SecpArtifactSignature::asHex);
             })
         .when(mockSignerForIdentifier)
-        .signAndGetArtifactSignature(any(String.class), any(Bytes.class));
+        .sign(any(String.class), any(Bytes.class));
 
     when(mockSignerForIdentifier.isSignerAvailable(any(String.class))).thenReturn(true);
 

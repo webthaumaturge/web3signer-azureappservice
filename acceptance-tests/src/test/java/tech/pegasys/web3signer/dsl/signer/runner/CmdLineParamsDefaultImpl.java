@@ -17,8 +17,7 @@ import static tech.pegasys.web3signer.commandline.PicoCliAwsKmsParameters.AWS_KM
 import static tech.pegasys.web3signer.commandline.PicoCliAwsKmsParameters.AWS_KMS_ENABLED_OPTION;
 import static tech.pegasys.web3signer.commandline.PicoCliAwsKmsParameters.AWS_KMS_REGION_OPTION;
 import static tech.pegasys.web3signer.commandline.PicoCliAwsKmsParameters.AWS_KMS_SECRET_ACCESS_KEY_OPTION;
-import static tech.pegasys.web3signer.commandline.PicoCliAwsKmsParameters.AWS_KMS_TAG_NAMES_FILTER_OPTION;
-import static tech.pegasys.web3signer.commandline.PicoCliAwsKmsParameters.AWS_KMS_TAG_VALUES_FILTER_OPTION;
+import static tech.pegasys.web3signer.commandline.PicoCliAwsKmsParameters.AWS_KMS_TAG_OPTION;
 import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParameters.AWS_ENDPOINT_OVERRIDE_OPTION;
 import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParameters.AWS_SECRETS_ACCESS_KEY_ID_OPTION;
 import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParameters.AWS_SECRETS_AUTH_MODE_OPTION;
@@ -26,8 +25,7 @@ import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParame
 import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParameters.AWS_SECRETS_PREFIXES_FILTER_OPTION;
 import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParameters.AWS_SECRETS_REGION_OPTION;
 import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParameters.AWS_SECRETS_SECRET_ACCESS_KEY_OPTION;
-import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParameters.AWS_SECRETS_TAG_NAMES_FILTER_OPTION;
-import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParameters.AWS_SECRETS_TAG_VALUES_FILTER_OPTION;
+import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParameters.AWS_SECRETS_TAG_OPTION;
 import static tech.pegasys.web3signer.signing.config.KeystoresParameters.KEYSTORES_PASSWORDS_PATH;
 import static tech.pegasys.web3signer.signing.config.KeystoresParameters.KEYSTORES_PASSWORD_FILE;
 import static tech.pegasys.web3signer.signing.config.KeystoresParameters.KEYSTORES_PATH;
@@ -53,6 +51,7 @@ import java.util.Optional;
 import java.util.function.Consumer;
 
 import com.google.common.collect.Lists;
+import org.apache.commons.lang3.tuple.Pair;
 
 public class CmdLineParamsDefaultImpl implements CmdLineParamsBuilder {
   private final SignerConfiguration signerConfig;
@@ -138,6 +137,12 @@ public class CmdLineParamsDefaultImpl implements CmdLineParamsBuilder {
       if (signerConfig.isSigningExtEnabled()) {
         params.add("--Xsigning-ext-enabled=true");
       }
+
+      signerConfig
+          .getCommitBoostParameters()
+          .ifPresent(
+              commitBoostParameters -> params.addAll(commitBoostOptions(commitBoostParameters)));
+
     } else if (signerConfig.getMode().equals("eth1")) {
       params.add("--downstream-http-port");
       params.add(Integer.toString(signerConfig.getDownstreamHttpPort()));
@@ -158,6 +163,15 @@ public class CmdLineParamsDefaultImpl implements CmdLineParamsBuilder {
     }
 
     return params;
+  }
+
+  private static List<String> commitBoostOptions(final Pair<Path, Path> commitBoostParameters) {
+    return List.of(
+        "--commit-boost-api-enabled=true",
+        "--proxy-keystores-path",
+        commitBoostParameters.getLeft().toAbsolutePath().toString(),
+        "--proxy-keystores-password-file",
+        commitBoostParameters.getRight().toAbsolutePath().toString());
   }
 
   private static Consumer<KeystoresParameters> setV3KeystoresBulkloadParameters(
@@ -378,15 +392,13 @@ public class CmdLineParamsDefaultImpl implements CmdLineParamsBuilder {
       params.add(String.join(",", awsVaultParameters.getPrefixesFilter()));
     }
 
-    if (!awsVaultParameters.getTagNamesFilter().isEmpty()) {
-      params.add(AWS_SECRETS_TAG_NAMES_FILTER_OPTION);
-      params.add(String.join(",", awsVaultParameters.getTagNamesFilter()));
-    }
-
-    if (!awsVaultParameters.getTagValuesFilter().isEmpty()) {
-      params.add(AWS_SECRETS_TAG_VALUES_FILTER_OPTION);
-      params.add(String.join(",", awsVaultParameters.getTagValuesFilter()));
-    }
+    awsVaultParameters
+        .getTags()
+        .forEach(
+            (key, value) -> {
+              params.add(AWS_SECRETS_TAG_OPTION);
+              params.add(key + "=" + value);
+            });
 
     return params;
   }
@@ -422,15 +434,13 @@ public class CmdLineParamsDefaultImpl implements CmdLineParamsBuilder {
               params.add(uri.toString());
             });
 
-    if (!awsVaultParameters.getTagNamesFilter().isEmpty()) {
-      params.add(AWS_KMS_TAG_NAMES_FILTER_OPTION);
-      params.add(String.join(",", awsVaultParameters.getTagNamesFilter()));
-    }
-
-    if (!awsVaultParameters.getTagValuesFilter().isEmpty()) {
-      params.add(AWS_KMS_TAG_VALUES_FILTER_OPTION);
-      params.add(String.join(",", awsVaultParameters.getTagValuesFilter()));
-    }
+    awsVaultParameters
+        .getTags()
+        .forEach(
+            (key, value) -> {
+              params.add(AWS_KMS_TAG_OPTION);
+              params.add(key + "=" + value);
+            });
 
     return params;
   }

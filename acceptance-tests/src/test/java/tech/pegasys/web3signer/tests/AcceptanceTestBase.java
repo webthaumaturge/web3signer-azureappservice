@@ -18,16 +18,15 @@ import tech.pegasys.web3signer.dsl.signer.Signer;
 import tech.pegasys.web3signer.dsl.signer.SignerConfiguration;
 import tech.pegasys.web3signer.signing.KeyType;
 
+import java.security.SecureRandom;
 import java.util.Set;
 
 import org.junit.jupiter.api.AfterEach;
 
 public class AcceptanceTestBase {
-
+  protected static final SecureRandom SECURE_RANDOM = new SecureRandom();
   protected Signer signer;
-  public static final String JSON_RPC_PATH = "/rpc/v0";
 
-  public static final Long FILECOIN_CHAIN_ID = 314L;
   public static final Long DEFAULT_CHAIN_ID = 1337L;
   protected static final String ETH_2_SLASHINGPROTECTION_PERMITTED_SIGNINGS =
       "eth2_slashingprotection_permitted_signings_total";
