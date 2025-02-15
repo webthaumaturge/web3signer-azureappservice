@@ -21,8 +21,7 @@ import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParame
 import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParameters.AWS_SECRETS_PREFIXES_FILTER_OPTION;
 import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParameters.AWS_SECRETS_REGION_OPTION;
 import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParameters.AWS_SECRETS_SECRET_ACCESS_KEY_OPTION;
-import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParameters.AWS_SECRETS_TAG_NAMES_FILTER_OPTION;
-import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParameters.AWS_SECRETS_TAG_VALUES_FILTER_OPTION;
+import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParameters.AWS_SECRETS_TAG_OPTION;
 
 import tech.pegasys.web3signer.commandline.subcommands.Eth2SubCommand;
 import tech.pegasys.web3signer.common.config.AwsAuthenticationMode;
@@ -36,6 +35,9 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.net.InetAddress;
 import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 import io.vertx.core.Vertx;
@@ -498,7 +500,7 @@ class CommandlineParserTest {
     String cmdline = validBaseCommandOptions();
     cmdline +=
         String.format(
-            "eth2 --slashing-protection-enabled=false %s=%s %s=%s %s=test %s=test %s=us-east-2 %s=p1,p2,p3 %s=t1,t2,t3 %s=v1,v2,v3",
+            "eth2 --slashing-protection-enabled=false %s=%s %s=%s %s=test %s=test %s=us-east-2 %s=p1,p2,p3 %9$s=t1=v1 %9$s t2=v2 %9$s=t3=v3",
             AWS_SECRETS_ENABLED_OPTION,
             Boolean.TRUE,
             AWS_SECRETS_AUTH_MODE_OPTION,
@@ -507,8 +509,7 @@ class CommandlineParserTest {
             AWS_SECRETS_SECRET_ACCESS_KEY_OPTION,
             AWS_SECRETS_REGION_OPTION,
             AWS_SECRETS_PREFIXES_FILTER_OPTION,
-            AWS_SECRETS_TAG_NAMES_FILTER_OPTION,
-            AWS_SECRETS_TAG_VALUES_FILTER_OPTION);
+            AWS_SECRETS_TAG_OPTION);
 
     MockEth2SubCommand mockEth2SubCommand = new MockEth2SubCommand();
     assertThat(mockEth2SubCommand.getAwsSecretsManagerParameters()).isNull();
@@ -519,26 +520,22 @@ class CommandlineParserTest {
     assertThat(result).isZero();
     assertThat(mockEth2SubCommand.getAwsSecretsManagerParameters().getPrefixesFilter())
         .contains("p1", "p2", "p3");
-    assertThat(mockEth2SubCommand.getAwsSecretsManagerParameters().getTagNamesFilter())
-        .contains("t1", "t2", "t3");
-    assertThat(mockEth2SubCommand.getAwsSecretsManagerParameters().getTagValuesFilter())
-        .contains("v1", "v2", "v3");
+    var expectedTags = Map.of("t1", "v1", "t2", "v2", "t3", "v3");
+    assertThat(mockEth2SubCommand.getAwsSecretsManagerParameters().getTags())
+        .containsExactlyInAnyOrderEntriesOf(expectedTags);
   }
 
   @Test
   void awsWithoutModeDefaultsToSpecified() {
     String cmdline = validBaseCommandOptions();
-    cmdline +=
-        String.format(
-            "eth2 --slashing-protection-enabled=false %s=%s %s=test %s=test %s=us-east-2 %s=p1,p2,p3 %s=t1,t2,t3 %s=v1,v2,v3",
-            AWS_SECRETS_ENABLED_OPTION,
-            Boolean.TRUE,
-            AWS_SECRETS_ACCESS_KEY_ID_OPTION,
-            AWS_SECRETS_SECRET_ACCESS_KEY_OPTION,
-            AWS_SECRETS_REGION_OPTION,
-            AWS_SECRETS_PREFIXES_FILTER_OPTION,
-            AWS_SECRETS_TAG_NAMES_FILTER_OPTION,
-            AWS_SECRETS_TAG_VALUES_FILTER_OPTION);
+    cmdline += "eth2 --slashing-protection-enabled=false ";
+    cmdline += AWS_SECRETS_ENABLED_OPTION + "=true ";
+    cmdline += AWS_SECRETS_ACCESS_KEY_ID_OPTION + "=test ";
+    cmdline += AWS_SECRETS_SECRET_ACCESS_KEY_OPTION + "=test ";
+    cmdline += AWS_SECRETS_REGION_OPTION + "=us-east-2 ";
+    cmdline += AWS_SECRETS_PREFIXES_FILTER_OPTION + "=p1,p2,p3 ";
+    cmdline += AWS_SECRETS_TAG_OPTION + " t1=v1 ";
+    cmdline += AWS_SECRETS_TAG_OPTION + "=t2=v2|t3=v3";
 
     MockEth2SubCommand mockEth2SubCommand = new MockEth2SubCommand();
     assertThat(mockEth2SubCommand.getAwsSecretsManagerParameters()).isNull();
@@ -551,25 +548,9 @@ class CommandlineParserTest {
         .isEqualTo(AwsAuthenticationMode.SPECIFIED);
     assertThat(mockEth2SubCommand.getAwsSecretsManagerParameters().getPrefixesFilter())
         .contains("p1", "p2", "p3");
-    assertThat(mockEth2SubCommand.getAwsSecretsManagerParameters().getTagNamesFilter())
-        .contains("t1", "t2", "t3");
-    assertThat(mockEth2SubCommand.getAwsSecretsManagerParameters().getTagValuesFilter())
-        .contains("v1", "v2", "v3");
-  }
-
-  @Test
-  void vertxWorkerPoolSizeWithWorkerPoolSizeFailsToParse() {
-    String cmdline = validBaseCommandOptions();
-    cmdline +=
-        "--vertx-worker-pool-size=30 --Xworker-pool-size=40 eth2 --slashing-protection-enabled=false";
-
-    parser.registerSubCommands(new MockEth2SubCommand());
-    final int result = parser.parseCommandLine(cmdline.split(" "));
-
-    assertThat(result).isNotZero();
-    assertThat(commandError.toString())
-        .contains(
-            "Error parsing parameters: --vertx-worker-pool-size option and --Xworker-pool-size option can't be used at the same time.");
+    var expectedTags = Map.of("t1", "v1", "t2", "v2", "t3", "v3");
+    assertThat(mockEth2SubCommand.getAwsSecretsManagerParameters().getTags())
+        .containsExactlyInAnyOrderEntriesOf(expectedTags);
   }
 
   @Test
@@ -586,19 +567,6 @@ class CommandlineParserTest {
   }
 
   @Test
-  void vertxWorkerPoolSizeDeprecatedParsesSuccessfully() {
-    String cmdline = validBaseCommandOptions();
-    cmdline += "--Xworker-pool-size=40 eth2 --slashing-protection-enabled=false";
-
-    MockEth2SubCommand mockEth2SubCommand = new MockEth2SubCommand();
-    parser.registerSubCommands(mockEth2SubCommand);
-    final int result = parser.parseCommandLine(cmdline.split(" "));
-
-    assertThat(result).isZero();
-    assertThat(mockEth2SubCommand.getConfig().getVertxWorkerPoolSize()).isEqualTo(40);
-  }
-
-  @Test
   void vertxWorkerPoolSizeParsesSuccessfully() {
     String cmdline = validBaseCommandOptions();
     cmdline += "--vertx-worker-pool-size=40 eth2 --slashing-protection-enabled=false";
@@ -609,6 +577,47 @@ class CommandlineParserTest {
 
     assertThat(result).isZero();
     assertThat(mockEth2SubCommand.getConfig().getVertxWorkerPoolSize()).isEqualTo(40);
+  }
+
+  @Test
+  void commitBoostApiEnabledWithoutKeystorePathFailsToParse() {
+    String cmdline = validBaseCommandOptions();
+    cmdline += "eth2 --slashing-protection-enabled=false --commit-boost-api-enabled=true";
+
+    parser.registerSubCommands(new MockEth2SubCommand());
+    final int result = parser.parseCommandLine(cmdline.split(" "));
+
+    assertThat(result).isNotZero();
+    assertThat(commandError.toString())
+        .contains(
+            "Error parsing parameters: Commit boost API is enabled, but --proxy-keystores-path not set");
+  }
+
+  @Test
+  void commitBoostApiEnabledWithoutKeystorePasswordFileFailsToParse() {
+    String cmdline = validBaseCommandOptions();
+    cmdline +=
+        "eth2 --slashing-protection-enabled=false --commit-boost-api-enabled=true --proxy-keystores-path=./keystore";
+
+    parser.registerSubCommands(new MockEth2SubCommand());
+    final int result = parser.parseCommandLine(cmdline.split(" "));
+
+    assertThat(result).isNotZero();
+    assertThat(commandError.toString())
+        .contains(
+            "Error parsing parameters: Commit boost API is enabled, but --proxy-keystores-password-file not set");
+  }
+
+  @Test
+  void commitBoostApiEnabledWithKeystorePathAndKeystorePasswordFileParsesSuccessfully() {
+    String cmdline = validBaseCommandOptions();
+    cmdline +=
+        "eth2 --slashing-protection-enabled=false --commit-boost-api-enabled=true --proxy-keystores-path=./keystore --proxy-keystores-password-file=./password";
+
+    parser.registerSubCommands(new MockEth2SubCommand());
+    final int result = parser.parseCommandLine(cmdline.split(" "));
+
+    assertThat(result).isZero();
   }
 
   private <T> void missingOptionalParameterIsValidAndMeetsDefault(
@@ -643,9 +652,11 @@ class CommandlineParserTest {
     public void run() {}
 
     @Override
-    protected ArtifactSignerProvider createArtifactSignerProvider(
+    protected List<ArtifactSignerProvider> createArtifactSignerProvider(
         final Vertx vertx, final MetricsSystem metricsSystem) {
-      return new DefaultArtifactSignerProvider(Collections::emptyList);
+      return List.of(
+          new DefaultArtifactSignerProvider(
+              Collections::emptyList, Optional.empty(), Optional.empty()));
     }
 
     @Override

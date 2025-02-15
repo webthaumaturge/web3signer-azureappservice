@@ -22,11 +22,9 @@ import tech.pegasys.web3signer.core.config.MetricsPushOptions;
 import tech.pegasys.web3signer.core.config.TlsOptions;
 import tech.pegasys.web3signer.core.metrics.vertx.VertxMetricsAdapterFactory;
 import tech.pegasys.web3signer.core.service.http.AzureAppClientPublicKeyAllowListHandler;
+import tech.pegasys.web3signer.core.routes.SwaggerUIRoute;
 import tech.pegasys.web3signer.core.service.http.HostAllowListHandler;
-import tech.pegasys.web3signer.core.service.http.SwaggerUIRoute;
 import tech.pegasys.web3signer.core.service.http.handlers.LogErrorHandler;
-import tech.pegasys.web3signer.core.service.http.handlers.PublicKeysListHandler;
-import tech.pegasys.web3signer.core.service.http.handlers.ReloadHandler;
 import tech.pegasys.web3signer.core.service.http.handlers.UpcheckHandler;
 import tech.pegasys.web3signer.core.util.FileUtil;
 import tech.pegasys.web3signer.signing.ArtifactSignerProvider;
@@ -66,7 +64,6 @@ import io.vertx.ext.web.handler.BodyHandler;
 import io.vertx.ext.web.handler.CorsHandler;
 import io.vertx.ext.web.handler.LoggerFormat;
 import io.vertx.ext.web.handler.LoggerHandler;
-import io.vertx.ext.web.impl.BlockingHandlerDecorator;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.config.Configurator;
@@ -82,7 +79,6 @@ public abstract class Runner implements Runnable, AutoCloseable {
   public static final String TEXT_PLAIN = HttpHeaderValues.TEXT_PLAIN.toString();
   public static final String HEALTHCHECK_PATH = "/healthcheck";
   public static final String UPCHECK_PATH = "/upcheck";
-  public static final String RELOAD_PATH = "/reload";
 
   private static final Logger LOG = LogManager.getLogger();
 
@@ -116,20 +112,25 @@ public abstract class Runner implements Runnable, AutoCloseable {
     final LogErrorHandler errorHandler = new LogErrorHandler();
     healthCheckHandler = HealthCheckHandler.create(vertx);
 
-    final ArtifactSignerProvider artifactSignerProvider =
-        createArtifactSignerProvider(vertx, metricsSystem);
+    final List<ArtifactSignerProvider> artifactSignerProviders =
+        Optional.ofNullable(createArtifactSignerProvider(vertx, metricsSystem)).orElse(List.of());
 
     try {
       createVersionMetric(metricsSystem);
       metricsService = MetricsService.create(vertx, metricsConfiguration, metricsSystem);
       metricsService.ifPresent(MetricsService::start);
-      try {
-        artifactSignerProvider.load().get(); // wait for signers to get loaded ...
-      } catch (final InterruptedException | ExecutionException e) {
-        LOG.error("Error loading signers", e);
-        registerHealthCheckProcedure(
-            KEYS_CHECK_UNEXPECTED, promise -> promise.complete(Status.KO()));
-      }
+
+      // load the artifact signer providers in order ...
+      artifactSignerProviders.forEach(
+          provider -> {
+            try {
+              provider.load().get(); // wait for signers to get loaded ...
+            } catch (final InterruptedException | ExecutionException e) {
+              LOG.error("Error loading signers", e);
+              registerHealthCheckProcedure(
+                  KEYS_CHECK_UNEXPECTED, promise -> promise.complete(Status.KO()));
+            }
+          });
 
       // register access log handler first
       if (baseConfig.isAccessLogsEnabled()) {
@@ -164,7 +165,7 @@ public abstract class Runner implements Runnable, AutoCloseable {
       registerHealthCheckProcedure(DEFAULT_CHECK, promise -> promise.complete(Status.OK()));
 
       final Context context =
-          new Context(router, metricsSystem, errorHandler, vertx, artifactSignerProvider);
+          new Context(router, metricsSystem, errorHandler, vertx, artifactSignerProviders);
 
       populateRouter(context);
       if (baseConfig.isSwaggerUIEnabled()) {
@@ -184,9 +185,7 @@ public abstract class Runner implements Runnable, AutoCloseable {
 
       closeables.add(() -> shutdownVertx(vertx));
     } catch (final Throwable e) {
-      if (artifactSignerProvider != null) {
-        artifactSignerProvider.close();
-      }
+      artifactSignerProviders.forEach(ArtifactSignerProvider::close);
       shutdownVertx(vertx);
       metricsService.ifPresent(MetricsService::stop);
       LOG.error("Failed to initialise application", e);
@@ -239,34 +238,10 @@ public abstract class Runner implements Runnable, AutoCloseable {
         .setMetricsOptions(new MetricsOptions().setEnabled(true));
   }
 
-  protected abstract ArtifactSignerProvider createArtifactSignerProvider(
+  protected abstract List<ArtifactSignerProvider> createArtifactSignerProvider(
       final Vertx vertx, final MetricsSystem metricsSystem);
 
   protected abstract void populateRouter(final Context context);
-
-  protected void addPublicKeysListHandler(
-      final Router router,
-      final ArtifactSignerProvider artifactSignerProvider,
-      final String path,
-      final LogErrorHandler errorHandler) {
-    router
-        .route(HttpMethod.GET, path)
-        .produces(JSON)
-        .handler(
-            new BlockingHandlerDecorator(new PublicKeysListHandler(artifactSignerProvider), false))
-        .failureHandler(errorHandler);
-  }
-
-  protected void addReloadHandler(
-      final Router router,
-      final List<ArtifactSignerProvider> orderedArtifactSignerProviders,
-      final LogErrorHandler errorHandler) {
-    router
-        .route(HttpMethod.POST, RELOAD_PATH)
-        .produces(JSON)
-        .handler(new ReloadHandler(orderedArtifactSignerProviders))
-        .failureHandler(errorHandler);
-  }
 
   private void registerUpcheckRoute(final Router router, final LogErrorHandler errorHandler) {
     router

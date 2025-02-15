@@ -32,11 +32,10 @@ import org.web3j.crypto.transaction.type.TransactionType;
 
 public class TransactionSerializer {
 
-  protected final SignerForIdentifier<SecpArtifactSignature> secpSigner;
+  protected final SignerForIdentifier secpSigner;
   protected final long chainId;
 
-  public TransactionSerializer(
-      final SignerForIdentifier<SecpArtifactSignature> secpSigner, final long chainId) {
+  public TransactionSerializer(final SignerForIdentifier secpSigner, final long chainId) {
     this.secpSigner = secpSigner;
     this.chainId = chainId;
   }
@@ -78,12 +77,13 @@ public class TransactionSerializer {
   }
 
   private SignatureData sign(final String eth1Address, final byte[] bytesToSign) {
-    final SecpArtifactSignature artifactSignature =
+    final String hexSignature =
         secpSigner
-            .signAndGetArtifactSignature(normaliseIdentifier(eth1Address), Bytes.of(bytesToSign))
+            .sign(normaliseIdentifier(eth1Address), Bytes.of(bytesToSign))
             .orElseThrow(() -> new JsonRpcException(SIGNING_FROM_IS_NOT_AN_UNLOCKED_ACCOUNT));
 
-    final Signature signature = artifactSignature.getSignatureData();
+    final Signature signature =
+        SecpArtifactSignature.fromBytes(Bytes.fromHexString(hexSignature)).getSignatureData();
 
     return new SignatureData(
         signature.getV().toByteArray(),

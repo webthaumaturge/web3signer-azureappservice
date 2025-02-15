@@ -1,10 +1,59 @@
 # Changelog
 
-## Next Release
+## 25.2.0
+
+> [!IMPORTANT]
+> This is a required update for nodes running on Holesky or Sepolia network as it contains the configuration for the 
+Electra hard fork.
+
+### Breaking Changes
+- The behavior of reload API endpoint has been modified due to issue [#1018][issue_1018] implemented by PR [#1054][pr_1054].
+The reload API call will remove stale keys therefore they will not be return in public_keys endpoint neither will be 
+able to perform any signing requests.
+- The AWS secrets manager and KMS tag filter cli options has been modified. Following cli options has been removed:
+```
+--aws-kms-tag-names-filter
+--aws-kms-tag-values-filter
+--aws-secrets-tag-names-filter
+--aws-secrets-tag-values-filter
+```
+The above are replaced by:
+```
+--aws-kms-tag <TagName>=<TagValue>
+--aws-secrets-tag <TagName>=<TagValue>
+```
+- `--Xworker-pool-size` deprecated cli option has been removed. Use `--vertx-worker-pool-size` instead.
+
+### Features Added
+- Remove stale keys during reload API call. [#1018][issue_1018] [#1054][pr_1054]
+- Use single cli option to specify AWS KMS tag name/value pairs. [#1055][pr_1055]
+- Use single cli option to specify AWS Secrets tag name/value pairs. [#1055][pr_1055]
+- Teku libraries updated to 25.2.0 with changes related to Electra hard fork on Holesky and Sepolia networks.
+
+### Bugs Fixed:
+- AWS KMS tag filter behavior has been fixed. [#1055][pr_1055]
+- Upgrade Netty library to 4.1.118.Final to fix CVE-2025-24970.
+
+[issue_1018]: https://github.com/Consensys/web3signer/issues/1018
+[pr_1054]: https://github.com/Consensys/web3signer/pull/1054
+[pr_1055]: https://github.com/Consensys/web3signer/pull/1055
+
+---
+## 24.12.0
+
+### Breaking Changes
+- Java 21 is required to build Web3Signer.
+- Filecoin mode has been removed.
 
 ### Features Added
 - Java 21 for build and runtime. [#995](https://github.com/Consensys/web3signer/pull/995)
 - Electra fork support. [#1020](https://github.com/Consensys/web3signer/pull/1020) and [#1023](https://github.com/Consensys/web3signer/pull/1023)
+- Teku and Besu libraries updated to 24.10.3 and 24.10.0 respectively.
+- Commit Boost API - Get Public Keys [#1031][cb_pr1], Generate Proxy Keys [#1043][cb_pr2] and Request Signature [#1045][cb_pr3].
+
+[cb_pr1]: https://github.com/Consensys/web3signer/pull/1031
+[cb_pr2]: https://github.com/Consensys/web3signer/pull/1043
+[cb_pr3]: https://github.com/Consensys/web3signer/pull/1045
 
 ### Bugs fixed
 - Override protobuf-java to 3.25.5 which is a transitive dependency from google-cloud-secretmanager. It fixes CVE-2024-7254.
