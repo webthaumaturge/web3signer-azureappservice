@@ -31,23 +31,23 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @EnabledIfEnvironmentVariable(
     named = "RW_AWS_ACCESS_KEY_ID",
-    matches = ".*",
+    matches = ".+",
     disabledReason = "RW_AWS_ACCESS_KEY_ID env variable is required")
 @EnabledIfEnvironmentVariable(
     named = "RW_AWS_SECRET_ACCESS_KEY",
-    matches = ".*",
+    matches = ".+",
     disabledReason = "RW_AWS_SECRET_ACCESS_KEY env variable is required")
 @EnabledIfEnvironmentVariable(
     named = "AWS_ACCESS_KEY_ID",
-    matches = ".*",
+    matches = ".+",
     disabledReason = "AWS_ACCESS_KEY_ID env variable is required")
 @EnabledIfEnvironmentVariable(
     named = "AWS_SECRET_ACCESS_KEY",
-    matches = ".*",
+    matches = ".+",
     disabledReason = "AWS_SECRET_ACCESS_KEY env variable is required")
 @EnabledIfEnvironmentVariable(
     named = "AWS_REGION",
-    matches = ".*",
+    matches = ".+",
     disabledReason = "AWS_REGION env variable is required")
 public class AwsKeyIdentifiersAcceptanceTest extends KeyIdentifiersAcceptanceTestBase {
 
@@ -94,7 +94,8 @@ public class AwsKeyIdentifiersAcceptanceTest extends KeyIdentifiersAcceptanceTes
         AWS_REGION,
         RO_AWS_ACCESS_KEY_ID,
         RO_AWS_SECRET_ACCESS_KEY,
-        awsSecretsManagerUtil.getSecretsManagerPrefix() + publicKey);
+        awsSecretsManagerUtil.getSecretsManagerPrefix() + publicKey,
+        awsEndpointOverride);
     initAndStartSigner("eth2");
     final Response response = callApiPublicKeysWithoutOpenApiClientSideFilter(BLS);
     validateApiResponse(response, containsInAnyOrder(publicKey));
@@ -102,10 +103,11 @@ public class AwsKeyIdentifiersAcceptanceTest extends KeyIdentifiersAcceptanceTes
 
   @Test
   public void environmentAwsKeysReturnAppropriatePublicKey() {
-    METADATA_FILE_HELPERS.createAwsYamlFileAt(
+    METADATA_FILE_HELPERS.createAwsYamlFileWithEnvironmentAt(
         testDirectory.resolve(publicKey + ".yaml"),
         AWS_REGION,
-        awsSecretsManagerUtil.getSecretsManagerPrefix() + publicKey);
+        awsSecretsManagerUtil.getSecretsManagerPrefix() + publicKey,
+        awsEndpointOverride);
     initAndStartSigner("eth2");
     final Response response = callApiPublicKeysWithoutOpenApiClientSideFilter(BLS);
     validateApiResponse(response, containsInAnyOrder(publicKey));
