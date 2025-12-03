@@ -20,6 +20,7 @@ dependencies {
   implementation project(':keystorage')
   implementation project(':signing')
   implementation project(':slashing-protection')
+  implementation project(':bls-keystore')
 
   implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml'
   implementation 'com.github.arteam:simple-json-rpc-server'
@@ -34,51 +35,54 @@ dependencies {
   implementation 'org.apache.commons:commons-lang3'
   implementation 'org.apache.logging.log4j:log4j-api'
   implementation 'org.apache.logging.log4j:log4j-core'
-  implementation 'io.tmio:tuweni-bytes'
-  implementation 'io.tmio:tuweni-io'
-  implementation 'io.tmio:tuweni-net'
-  implementation 'org.hyperledger.besu.internal:metrics-core'
-  implementation 'org.hyperledger.besu:plugin-api'
+  implementation 'io.consensys.tuweni:tuweni-bytes'
+  implementation 'io.consensys.tuweni:tuweni-io'
+  implementation 'io.consensys.tuweni:tuweni-net'
+  implementation 'org.hyperledger.besu.internal:besu-metrics-core'
+  implementation 'org.hyperledger.besu:besu-plugin-api'
   implementation 'org.jdbi:jdbi3-core'
   implementation 'org.web3j:crypto'
   implementation 'org.web3j:besu'
-  implementation 'tech.pegasys.teku.internal:bls-keystore'
   implementation 'tech.pegasys.teku.internal:serializer'
   implementation 'tech.pegasys.teku.internal:spec'
   implementation 'tech.pegasys.teku.internal:unsigned'
+  implementation 'tech.pegasys.teku.internal:async'
+  implementation 'tech.pegasys.teku.internal:execution-types'
+
   runtimeOnly 'org.apache.logging.log4j:log4j-slf4j-impl'
 
+  // Test dependencies
   testImplementation (testFixtures(project(":signing")))
   testImplementation 'tech.pegasys.teku.internal:networks'
   testImplementation 'io.vertx:vertx-junit5'
   testImplementation 'org.assertj:assertj-core'
-  testImplementation 'org.junit.jupiter:junit-jupiter-api'
-  testImplementation 'org.junit.jupiter:junit-jupiter-params'
   testImplementation 'org.mockito:mockito-junit-jupiter'
   testImplementation 'org.bouncycastle:bcprov-jdk18on'
-  testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
 
-  integrationTestImplementation 'org.apache.logging.log4j:log4j'
+  // JUnit test dependencies
+  testImplementation 'org.junit.jupiter:junit-jupiter-api'
+  testImplementation 'org.junit.jupiter:junit-jupiter-params'
+  testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+  testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+  // Integration test dependencies
+  integrationTestImplementation 'org.apache.logging.log4j:log4j-api'
   integrationTestImplementation 'org.apache.logging.log4j:log4j-core'
   integrationTestImplementation 'org.assertj:assertj-core'
-  integrationTestImplementation 'org.junit.jupiter:junit-jupiter-api'
-  integrationTestImplementation 'org.junit.jupiter:junit-jupiter-params'
   integrationTestImplementation 'org.mockito:mockito-junit-jupiter'
   integrationTestImplementation sourceSets.testFixtures.output
   integrationTestImplementation 'io.rest-assured:rest-assured'
   integrationTestImplementation('org.mock-server:mockserver-netty') {
-    // mock-server includes a dependency on junit 4 for a junit rule which we aren't using
-    exclude group: 'junit', module: 'junit'
+      // mock-server includes a dependency on junit 4 for a junit rule which we aren't using
+      exclude group: 'junit', module: 'junit'
   }
   integrationTestImplementation 'org.awaitility:awaitility'
-  integrationTestRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
   integrationTestImplementation (testFixtures(project(":signing")))
+
+  // JUnit integration test dependencies
+  integrationTestImplementation 'org.junit.jupiter:junit-jupiter-api'
+  integrationTestImplementation 'org.junit.jupiter:junit-jupiter-params'
+  integrationTestRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+  integrationTestRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
-processResources {
-  filesMatching('openapi-specs/**/web3signer.yaml') {
-    filter {
-      it.replace('@VERSION@', calculateVersion())
-    }
-  }
-}

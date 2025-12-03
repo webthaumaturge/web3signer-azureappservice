@@ -17,7 +17,7 @@ jar {
 dependencies {
   implementation project(":common")
   implementation project(':keystorage')
-
+  implementation project(":bls-keystore")
   implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml'
   implementation 'com.github.arteam:simple-json-rpc-server'
   implementation 'commons-io:commons-io'
@@ -25,19 +25,18 @@ dependencies {
   implementation 'org.apache.commons:commons-lang3'
   implementation 'org.apache.logging.log4j:log4j-api'
   implementation 'org.apache.logging.log4j:log4j-core'
-  implementation 'org.hyperledger.besu.internal:metrics-core'
-  implementation 'org.hyperledger.besu:plugin-api'
+  implementation 'org.hyperledger.besu.internal:besu-metrics-core'
+  implementation 'org.hyperledger.besu:besu-plugin-api'
   implementation 'org.web3j:core'
   implementation 'tech.pegasys.teku.internal:bls'
-  implementation 'tech.pegasys.teku.internal:bls-keystore'
   implementation 'tech.pegasys.teku.internal:serializer'
   implementation 'tech.pegasys.teku.internal:spec'
   implementation 'tech.pegasys.teku.internal:unsigned'
   implementation 'com.azure:azure-security-keyvault-keys'
-  implementation 'io.tmio:tuweni-net'
+  implementation 'io.consensys.tuweni:tuweni-net'
   implementation 'com.google.guava:guava'
   implementation 'org.bouncycastle:bcprov-jdk18on'
-  implementation 'com.github.ben-manes.caffeine:caffeine:3.1.5'
+  implementation 'com.github.ben-manes.caffeine:caffeine:3.2.2'
   implementation 'software.amazon.awssdk:auth'
   implementation 'software.amazon.awssdk:kms'
   implementation 'com.google.cloud:google-cloud-secretmanager'
@@ -48,23 +47,28 @@ dependencies {
   runtimeOnly 'org.bouncycastle:bcpkix-jdk18on'
   runtimeOnly 'tech.pegasys:jblst'
 
+  // Test dependencies
   testImplementation 'org.assertj:assertj-core'
-  testImplementation 'org.junit.jupiter:junit-jupiter-api'
-  testImplementation 'org.junit.jupiter:junit-jupiter-params'
   testImplementation 'org.mockito:mockito-junit-jupiter'
   testImplementation(testFixtures(project(":keystorage")))
-  testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
 
+  // JUnit test dependencies
+  testImplementation 'org.junit.jupiter:junit-jupiter-api'
+  testImplementation 'org.junit.jupiter:junit-jupiter-params'
+  testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+  testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+  // Test Fixtures dependencies
   testFixturesApi 'tech.pegasys.teku.internal:bls'
   testFixturesImplementation 'com.fasterxml.jackson.core:jackson-databind'
   testFixturesImplementation 'org.apache.commons:commons-lang3'
   testFixturesImplementation 'org.apache.logging.log4j:log4j-api'
   testFixturesImplementation 'org.apache.logging.log4j:log4j-core'
-  testFixturesImplementation 'io.tmio:tuweni-bytes'
-  testFixturesImplementation 'tech.pegasys.teku.internal:bls-keystore'
+  testFixturesImplementation 'io.consensys.tuweni:tuweni-bytes'
   testFixturesImplementation 'software.amazon.awssdk:auth'
   testFixturesImplementation 'software.amazon.awssdk:secretsmanager'
   testFixturesImplementation 'software.amazon.awssdk:kms'
   testFixturesImplementation 'com.google.cloud:google-cloud-secretmanager'
   testFixturesImplementation project(":common")
+  testFixturesImplementation project(":bls-keystore")
 }

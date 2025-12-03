@@ -23,6 +23,7 @@ import tech.pegasys.teku.bls.BLSKeyPair;
 import tech.pegasys.teku.bls.BLSSecretKey;
 import tech.pegasys.teku.spec.Spec;
 import tech.pegasys.web3signer.core.config.BaseConfig;
+import tech.pegasys.web3signer.core.config.KeyManagerApiConfig;
 import tech.pegasys.web3signer.core.routes.PublicKeysListRoute;
 import tech.pegasys.web3signer.core.routes.ReloadRoute;
 import tech.pegasys.web3signer.core.routes.eth2.CommitBoostGenerateProxyKeyRoute;
@@ -52,10 +53,8 @@ import tech.pegasys.web3signer.signing.config.SignerLoader;
 import tech.pegasys.web3signer.signing.config.metadata.AbstractArtifactSignerFactory;
 import tech.pegasys.web3signer.signing.config.metadata.BlsArtifactSignerFactory;
 import tech.pegasys.web3signer.signing.config.metadata.SignerOrigin;
-import tech.pegasys.web3signer.signing.config.metadata.interlock.InterlockKeyProvider;
 import tech.pegasys.web3signer.signing.config.metadata.parser.YamlMapperFactory;
 import tech.pegasys.web3signer.signing.config.metadata.parser.YamlSignerParser;
-import tech.pegasys.web3signer.signing.config.metadata.yubihsm.YubiHsmOpaqueDataProvider;
 import tech.pegasys.web3signer.slashingprotection.DbHealthCheck;
 import tech.pegasys.web3signer.slashingprotection.DbPrunerRunner;
 import tech.pegasys.web3signer.slashingprotection.PostLoadingValidatorsProcessor;
@@ -91,7 +90,7 @@ public class Eth2Runner extends Runner {
   private final boolean pruningEnabled;
   private final KeystoresParameters keystoresParameters;
   private final Spec eth2Spec;
-  private final boolean isKeyManagerApiEnabled;
+  private final KeyManagerApiConfig keyManagerApiConfig;
   private final boolean signingExtEnabled;
   private final KeystoresParameters commitBoostApiParameters;
 
@@ -103,7 +102,7 @@ public class Eth2Runner extends Runner {
       final AwsVaultParameters awsVaultParameters,
       final GcpSecretManagerParameters gcpSecretManagerParameters,
       final Spec eth2Spec,
-      final boolean isKeyManagerApiEnabled,
+      final KeyManagerApiConfig keyManagerApiConfig,
       final boolean signingExtEnabled,
       final KeystoresParameters commitBoostApiParameters) {
     super(baseConfig);
@@ -113,7 +112,7 @@ public class Eth2Runner extends Runner {
     this.pruningEnabled = slashingProtectionParameters.isPruningEnabled();
     this.keystoresParameters = keystoresParameters;
     this.eth2Spec = eth2Spec;
-    this.isKeyManagerApiEnabled = isKeyManagerApiEnabled;
+    this.keyManagerApiConfig = keyManagerApiConfig;
     this.awsVaultParameters = awsVaultParameters;
     this.gcpSecretManagerParameters = gcpSecretManagerParameters;
     this.signingExtEnabled = signingExtEnabled;
@@ -142,8 +141,9 @@ public class Eth2Runner extends Runner {
     if (signingExtEnabled) {
       new Eth2SignExtensionRoute(context).register();
     }
-    if (isKeyManagerApiEnabled) {
-      new KeyManagerApiRoute(context, baseConfig, slashingProtectionContext).register();
+    if (keyManagerApiConfig.isKeyManagerApiEnabled()) {
+      new KeyManagerApiRoute(context, baseConfig, keyManagerApiConfig, slashingProtectionContext)
+          .register();
     }
     if (commitBoostApiParameters.isEnabled()) {
       new CommitBoostPublicKeysRoute(context).register();
@@ -157,19 +157,19 @@ public class Eth2Runner extends Runner {
       final Vertx vertx, final MetricsSystem metricsSystem) {
     return List.of(
         new DefaultArtifactSignerProvider(
-            createArtifactSignerSupplier(vertx, metricsSystem),
+            createArtifactSignerSupplier(metricsSystem),
             slashingProtectionContext.map(PostLoadingValidatorsProcessor::new),
             Optional.of(commitBoostApiParameters)));
   }
 
   private Supplier<Collection<ArtifactSigner>> createArtifactSignerSupplier(
-      final Vertx vertx, final MetricsSystem metricsSystem) {
+      final MetricsSystem metricsSystem) {
     return () -> {
       try (final AzureKeyVaultFactory azureKeyVaultFactory = new AzureKeyVaultFactory()) {
         final List<ArtifactSigner> signers = new ArrayList<>();
         // load keys from key config files
         signers.addAll(
-            loadSignersFromKeyConfigFiles(vertx, azureKeyVaultFactory, metricsSystem).getValues());
+            loadSignersFromKeyConfigFiles(azureKeyVaultFactory, metricsSystem).getValues());
         // bulk load keys
         signers.addAll(bulkLoadSigners(azureKeyVaultFactory).getValues());
 
@@ -179,23 +179,16 @@ public class Eth2Runner extends Runner {
   }
 
   private MappedResults<ArtifactSigner> loadSignersFromKeyConfigFiles(
-      final Vertx vertx,
-      final AzureKeyVaultFactory azureKeyVaultFactory,
-      final MetricsSystem metricsSystem) {
+      final AzureKeyVaultFactory azureKeyVaultFactory, final MetricsSystem metricsSystem) {
     try (final HashicorpConnectionFactory hashicorpConnectionFactory =
             new HashicorpConnectionFactory();
-        final InterlockKeyProvider interlockKeyProvider = new InterlockKeyProvider(vertx);
-        final YubiHsmOpaqueDataProvider yubiHsmOpaqueDataProvider =
-            new YubiHsmOpaqueDataProvider();
         final AwsSecretsManagerProvider awsSecretsManagerProvider =
-            new AwsSecretsManagerProvider(awsVaultParameters.getCacheMaximumSize()); ) {
+            new AwsSecretsManagerProvider(awsVaultParameters.getCacheMaximumSize())) {
       final AbstractArtifactSignerFactory artifactSignerFactory =
           new BlsArtifactSignerFactory(
               baseConfig.getKeyConfigPath(),
               metricsSystem,
               hashicorpConnectionFactory,
-              interlockKeyProvider,
-              yubiHsmOpaqueDataProvider,
               awsSecretsManagerProvider,
               (args) -> new BlsArtifactSigner(args.getKeyPair(), args.getOrigin(), args.getPath()),
               azureKeyVaultFactory);
@@ -347,10 +340,7 @@ public class Eth2Runner extends Runner {
                 new BLSKeyPair(BLSSecretKey.fromBytes(Bytes32.wrap(privateKeyBytes)));
             return new BlsArtifactSigner(keyPair, SignerOrigin.AZURE);
           } catch (final Exception e) {
-            LOG.error(
-                "Failed to load secret named {} from azure key vault due to: {}.",
-                name,
-                e.getMessage());
+            LOG.warn("Failed to map to BLS KeyPair from Azure key vault");
             return null;
           }
         },

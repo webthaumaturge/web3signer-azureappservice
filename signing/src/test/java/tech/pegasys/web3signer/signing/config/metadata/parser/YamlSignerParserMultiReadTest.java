@@ -31,8 +31,6 @@ import tech.pegasys.web3signer.signing.KeyType;
 import tech.pegasys.web3signer.signing.config.AzureKeyVaultFactory;
 import tech.pegasys.web3signer.signing.config.metadata.BlsArtifactSignerFactory;
 import tech.pegasys.web3signer.signing.config.metadata.SigningMetadataException;
-import tech.pegasys.web3signer.signing.config.metadata.interlock.InterlockKeyProvider;
-import tech.pegasys.web3signer.signing.config.metadata.yubihsm.YubiHsmOpaqueDataProvider;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -57,8 +55,6 @@ class YamlSignerParserMultiReadTest {
   private final BLSKeyPair blsKeyPair2 = BLSTestUtil.randomKeyPair(2);
   @Mock private MetricsSystem metricsSystem;
   @Mock private HashicorpConnectionFactory hashicorpConnectionFactory;
-  @Mock private InterlockKeyProvider interlockKeyProvider;
-  @Mock private YubiHsmOpaqueDataProvider yubiHsmOpaqueDataProvider;
   @Mock private AwsSecretsManagerProvider awsSecretsManagerProvider;
   @Mock private AzureKeyVaultFactory azureKeyVaultFactory;
   @Mock private LabelledMetric<OperationTimer> privateKeyRetrievalTimer;
@@ -87,8 +83,6 @@ class YamlSignerParserMultiReadTest {
             configDir,
             metricsSystem,
             hashicorpConnectionFactory,
-            interlockKeyProvider,
-            yubiHsmOpaqueDataProvider,
             awsSecretsManagerProvider,
             (args) -> new BlsArtifactSigner(args.getKeyPair(), args.getOrigin(), args.getPath()),
             azureKeyVaultFactory);
@@ -104,14 +98,15 @@ class YamlSignerParserMultiReadTest {
     final String prvKey2 = blsKeyPair2.getSecretKey().toBytes().toHexString();
 
     final String multiYaml =
-        String.format(
-            "---\n"
-                + "privateKey: \"%s\"\n"
-                + "type: \"file-raw\"\n"
-                + "---\n"
-                + "privateKey: \"%s\"\n"
-                + "type: \"file-raw\"",
-            prvKey1, prvKey2);
+        """
+              ---
+              privateKey: "%s"
+              type: "file-raw"
+              ---
+              privateKey: "%s"
+              type: "file-raw"
+              """
+            .formatted(prvKey1, prvKey2);
 
     final List<ArtifactSigner> signingMetadataList =
         signerParser.parse(signerParser.readSigningMetadata(multiYaml));
@@ -154,13 +149,14 @@ class YamlSignerParserMultiReadTest {
 
     // missing type:
     final String multiYaml =
-        String.format(
-            "---\n"
-                + "privateKey: \"%s\"\n"
-                + "type: \"file-raw\"\n"
-                + "---\n"
-                + "privateKey: \"%s\"",
-            prvKey1, prvKey2);
+        """
+              ---
+              privateKey: "%s"
+              type: "file-raw"
+              ---
+              privateKey: "%s"
+              """
+            .formatted(prvKey1, prvKey2);
 
     assertThatExceptionOfType(SigningMetadataException.class)
         .isThrownBy(() -> signerParser.parse(signerParser.readSigningMetadata(multiYaml)))
