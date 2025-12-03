@@ -13,18 +13,18 @@
 package tech.pegasys.web3signer.dsl.utils;
 
 import static org.assertj.core.api.AssertionsForClassTypes.fail;
-import static tech.pegasys.teku.bls.keystore.model.Pbkdf2PseudoRandomFunction.HMAC_SHA256;
+import static tech.pegasys.web3signer.bls.keystore.model.Pbkdf2PseudoRandomFunction.HMAC_SHA256;
 
 import tech.pegasys.teku.bls.BLSKeyPair;
-import tech.pegasys.teku.bls.keystore.KeyStore;
-import tech.pegasys.teku.bls.keystore.KeyStoreLoader;
-import tech.pegasys.teku.bls.keystore.model.Cipher;
-import tech.pegasys.teku.bls.keystore.model.CipherFunction;
-import tech.pegasys.teku.bls.keystore.model.KdfFunction;
-import tech.pegasys.teku.bls.keystore.model.KdfParam;
-import tech.pegasys.teku.bls.keystore.model.KeyStoreData;
-import tech.pegasys.teku.bls.keystore.model.Pbkdf2Param;
-import tech.pegasys.teku.bls.keystore.model.SCryptParam;
+import tech.pegasys.web3signer.bls.keystore.KeyStore;
+import tech.pegasys.web3signer.bls.keystore.KeyStoreLoader;
+import tech.pegasys.web3signer.bls.keystore.model.Cipher;
+import tech.pegasys.web3signer.bls.keystore.model.CipherFunction;
+import tech.pegasys.web3signer.bls.keystore.model.KdfFunction;
+import tech.pegasys.web3signer.bls.keystore.model.KdfParam;
+import tech.pegasys.web3signer.bls.keystore.model.KeyStoreData;
+import tech.pegasys.web3signer.bls.keystore.model.Pbkdf2Param;
+import tech.pegasys.web3signer.bls.keystore.model.SCryptParam;
 import tech.pegasys.web3signer.common.config.AwsAuthenticationMode;
 import tech.pegasys.web3signer.dsl.HashicorpSigningParams;
 import tech.pegasys.web3signer.keystore.hashicorp.dsl.certificates.CertificateHelpers;
@@ -173,12 +173,13 @@ public class MetadataFileHelpers {
       final String clientId,
       final String clientSecret,
       final String keyVaultName,
-      final String tenantId) {
+      final String tenantId,
+      final String keyName) {
     try {
       final Map<String, String> signingMetadata = new HashMap<>();
       signingMetadata.put("type", "azure-key");
       signingMetadata.put("vaultName", keyVaultName);
-      signingMetadata.put("keyName", "TestKey2");
+      signingMetadata.put("keyName", keyName);
       signingMetadata.put("clientId", clientId);
       signingMetadata.put("clientSecret", clientSecret);
       signingMetadata.put("tenantId", tenantId);
@@ -186,46 +187,6 @@ public class MetadataFileHelpers {
     } catch (final Exception e) {
       throw new RuntimeException("Unable to construct hashicorp yaml file", e);
     }
-  }
-
-  public void createInterlockYamlFileAt(
-      final Path metadataFilePath,
-      final Path knownServersFile,
-      final String keyPath,
-      final KeyType keyType) {
-    // these are default credentials of Interlock on USB Armory
-    final Map<String, String> yaml = new HashMap<>();
-    yaml.put("type", "interlock");
-    yaml.put("interlockUrl", "https://10.0.0.1");
-    yaml.put("knownServersFile", knownServersFile.toString());
-    yaml.put("volume", "armory");
-    yaml.put("password", "usbarmory");
-    yaml.put("keyPath", keyPath);
-    yaml.put("keyType", keyType.name());
-
-    createYamlFile(metadataFilePath, yaml);
-  }
-
-  public void createYubihsmYamlFileAt(
-      final Path metadataFilePath,
-      final String pkcs11ModulePath,
-      final String connectorUrl,
-      final String additionalInitConfig,
-      final short authId,
-      final String password,
-      final int opaqueDataId,
-      final KeyType keyType) {
-    final Map<String, Serializable> yaml = new HashMap<>();
-    yaml.put("type", "yubihsm");
-    yaml.put("pkcs11ModulePath", pkcs11ModulePath);
-    yaml.put("connectorUrl", connectorUrl);
-    yaml.put("additionalInitConfig", additionalInitConfig);
-    yaml.put("authId", authId);
-    yaml.put("password", password);
-    yaml.put("opaqueDataId", opaqueDataId);
-    yaml.put("keyType", keyType.name());
-
-    createYamlFile(metadataFilePath, yaml);
   }
 
   public void createAwsYamlFileAt(

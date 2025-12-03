@@ -92,10 +92,6 @@ public class CmdLineParamsDefaultImpl implements CmdLineParamsBuilder {
       }
     }
 
-    if (signerConfig.isSwaggerUIEnabled()) {
-      params.add("--swagger-ui-enabled=true");
-    }
-
     params.add("--access-logs-enabled=true");
 
     if (signerConfig.isHttpDynamicPortAllocation()) {
@@ -318,6 +314,11 @@ public class CmdLineParamsDefaultImpl implements CmdLineParamsBuilder {
     if (signerConfig.getElectraForkEpoch().isPresent()) {
       params.add("--Xnetwork-electra-fork-epoch");
       params.add(Long.toString(signerConfig.getElectraForkEpoch().get()));
+    }
+
+    if (signerConfig.getFuluForkEpoch().isPresent()) {
+      params.add("--Xnetwork-fulu-fork-epoch");
+      params.add(Long.toString(signerConfig.getFuluForkEpoch().get()));
     }
 
     if (signerConfig.getNetwork().isPresent()) {

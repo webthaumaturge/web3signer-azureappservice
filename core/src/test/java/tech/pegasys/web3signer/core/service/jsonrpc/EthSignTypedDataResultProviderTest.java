@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.when;
 import static org.web3j.crypto.Keys.getAddress;
 import static org.web3j.crypto.Sign.signMessage;
 import static tech.pegasys.web3signer.core.service.jsonrpc.response.JsonRpcError.INVALID_PARAMS;
@@ -48,6 +49,7 @@ import org.junit.jupiter.params.provider.ArgumentsProvider;
 import org.junit.jupiter.params.provider.ArgumentsSource;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.support.ParameterDeclarations;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.web3j.crypto.ECKeyPair;
@@ -64,8 +66,32 @@ public class EthSignTypedDataResultProviderTest {
           + "a645c0b7b58158babbfa6c6cd5a48aa7340a8749176b120e8516216787a13dc76";
 
   private static final String EIP712_VALID_JSON =
-      "{\"types\": {    \"EIP712Domain\": [      {\"name\": \"name\", \"type\": \"string\"},      {\"name\": \"version\", \"type\": \"string\"},      {\"name\": \"chainId\", \"type\": \"uint256\"},      {\"name\": \"verifyingContract\", \"type\": \"address\"}    ],    \"Person\": [      {\"name\": \"name\", \"type\": \"string\"},      {\"name\": \"wallet\", \"type\": \"address\"}    ]  },  \"domain\": {    \"name\": \"My Dapp\",    \"version\": \"1.0\",    \"chainId\": 1,    \"verifyingContract\": \"0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC\"  },  \"primaryType\": \"Person\",  \"message\": {    \"name\": \"John Doe\",    \"wallet\": \"0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B\"  }}";
-
+      """
+    {
+        "types": {
+            "EIP712Domain": [
+                {"name": "name", "type": "string"},
+                {"name": "version", "type": "string"},
+                {"name": "chainId", "type": "uint256"},
+                {"name": "verifyingContract", "type": "address"}
+            ],
+            "Person": [
+                {"name": "name", "type": "string"},
+                {"name": "wallet", "type": "address"}
+            ]
+        },
+        "domain": {
+            "name": "My Dapp",
+            "version": "1.0",
+            "chainId": 1,
+            "verifyingContract": "0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC"
+        },
+        "primaryType": "Person",
+        "message": {
+            "name": "John Doe",
+            "wallet": "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
+        }
+    }""";
   private static final BigInteger PRIVATE_KEY = Numeric.toBigInt(PRIVATE_KEY_STRING);
   private static final BigInteger PUBLIC_KEY = Numeric.toBigInt(PUBLIC_KEY_STRING);
 
@@ -120,6 +146,8 @@ public class EthSignTypedDataResultProviderTest {
         .when(transactionSignerProvider)
         .sign(anyString(), any(Bytes.class));
 
+    when(transactionSignerProvider.isSignerAvailable(anyString())).thenReturn(true);
+
     final EthSignTypedDataResultProvider resultProvider =
         new EthSignTypedDataResultProvider(transactionSignerProvider);
 
@@ -137,7 +165,8 @@ public class EthSignTypedDataResultProviderTest {
 
   private static class InvalidParamsProvider implements ArgumentsProvider {
     @Override
-    public Stream<? extends Arguments> provideArguments(final ExtensionContext context) {
+    public Stream<? extends Arguments> provideArguments(
+        final ParameterDeclarations parameterDeclarations, final ExtensionContext context) {
       return Stream.of(
           Arguments.of(Collections.emptyList()),
           Arguments.of(Collections.singleton(2)),

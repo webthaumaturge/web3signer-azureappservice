@@ -12,8 +12,8 @@
  */
 package tech.pegasys.web3signer.signing;
 
-import tech.pegasys.teku.bls.keystore.KeyStoreLoader;
-import tech.pegasys.teku.bls.keystore.model.KeyStoreData;
+import tech.pegasys.web3signer.bls.keystore.KeyStoreLoader;
+import tech.pegasys.web3signer.bls.keystore.model.KeyStoreData;
 import tech.pegasys.web3signer.signing.config.metadata.FileKeyStoreMetadata;
 import tech.pegasys.web3signer.signing.config.metadata.SigningMetadata;
 import tech.pegasys.web3signer.signing.util.IdentifierUtils;
@@ -115,8 +115,7 @@ public class KeystoreFileManager {
                       final SigningMetadata metaDataInfo =
                           yamlMapper.readValue(fileContent, SigningMetadata.class);
                       if (metaDataInfo.getKeyType() == KeyType.BLS
-                          && metaDataInfo instanceof FileKeyStoreMetadata) {
-                        final FileKeyStoreMetadata info = ((FileKeyStoreMetadata) metaDataInfo);
+                          && metaDataInfo instanceof FileKeyStoreMetadata info) {
                         final Path keystoreFile = info.getKeystoreFile();
                         final Path passwordFile = info.getKeystorePasswordFile();
                         final KeyStoreData keyStoreData =

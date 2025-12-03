@@ -32,8 +32,12 @@ public class EthSendTransactionJsonParameters {
   private BigInteger value;
   private String receiver;
   private String data;
+  private String input;
   private BigInteger maxFeePerGas;
   private BigInteger maxPriorityFeePerGas;
+  private BigInteger maxFeePerBlobGas;
+  private String[] blobVersionedHashes;
+  private String[] blobs;
 
   @JsonCreator
   public EthSendTransactionJsonParameters(@JsonProperty("from") final String sender) {
@@ -71,6 +75,11 @@ public class EthSendTransactionJsonParameters {
     this.data = data;
   }
 
+  @JsonSetter("input")
+  public void input(final String input) {
+    this.input = input;
+  }
+
   @JsonSetter("maxPriorityFeePerGas")
   public void maxPriorityFeePerGas(final String maxPriorityFeePerGas) {
     this.maxPriorityFeePerGas = decodeBigInteger(maxPriorityFeePerGas);
@@ -81,8 +90,28 @@ public class EthSendTransactionJsonParameters {
     this.maxFeePerGas = decodeBigInteger(maxFeePerGas);
   }
 
+  @JsonSetter("maxFeePerBlobGas")
+  public void maxFeePerBlobGas(final String maxFeePerBlobGas) {
+    this.maxFeePerBlobGas = decodeBigInteger(maxFeePerBlobGas);
+  }
+
+  @JsonSetter("blobVersionedHashes")
+  public void blobVersionedHashes(final String[] blobVersionedHashes) {
+    this.blobVersionedHashes = blobVersionedHashes;
+  }
+
+  @JsonSetter("blobs")
+  public void blobs(final String[] blobs) {
+    this.blobs = blobs;
+  }
+
   public Optional<String> data() {
-    return Optional.ofNullable(data);
+    if (data != null) {
+      return Optional.of(data);
+    } else if (input != null) {
+      return Optional.of(input);
+    }
+    return Optional.empty();
   }
 
   public Optional<BigInteger> gas() {
@@ -115,5 +144,17 @@ public class EthSendTransactionJsonParameters {
 
   public Optional<BigInteger> maxFeePerGas() {
     return Optional.ofNullable(maxFeePerGas);
+  }
+
+  public Optional<BigInteger> maxFeePerBlobGas() {
+    return Optional.ofNullable(maxFeePerBlobGas);
+  }
+
+  public Optional<String[]> blobVersionedHashes() {
+    return Optional.ofNullable(blobVersionedHashes);
+  }
+
+  public Optional<String[]> blobs() {
+    return Optional.ofNullable(blobs);
   }
 }

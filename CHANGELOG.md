@@ -1,5 +1,67 @@
 # Changelog
 
+## Upcoming Releases
+### Breaking Changes
+- `--swagger-ui-enabled` cli option has been removed. The Specs UI can be accessed at https://consensys.github.io/web3signer/.
+
+### Features Added
+
+
+### Bugs Fixed
+
+---
+## 25.11.0
+### Features Added
+- Updated Teku libraries to add scheduling for Fulu upgrade for mainnet
+  - Mainnet configuration for Fulu fork at epoch 411392 (2025-12-03 21:49:11 UTC)
+- Added CLI option `-Xkey-manager-skip-keystore-storage` to eth2 subcommand preventing web3signer from writing keystores 
+imported via the keymanager API to disk. This is *not* safe for operators who do not backup keystore.
+- Added support for signing EIP-4844 transactions with blob data and versioned hashes (thanks [@mskrzypkows](https://github.com/mskrzypkows)!)
+- Updated web3j library to 5.0.1
+- Reduced Web3Signer docker image size. Removed unnecessary tools `iputils-ping, net-tools` from the image.
+
+---
+## 25.9.1
+### Breaking changes
+- `eea*` RPC methods and other privacy supporting classes have been removed since Privacy feature has been removed from [Besu 25.6.0](https://github.com/hyperledger/besu/releases/tag/25.6.0)
+
+### Features Added
+- Updated Teku libraries to add scheduling for Fulu testnets:
+  - Holesky fork at epoch 165120 (2025-10-01 08:48:00 UTC)
+  - Sepolia fork at epoch 272640 (2025-10-14 07:36:00 UTC)
+  - Hoodi fork at epoch 50688 (2025-10-28 18:53:12 UTC)
+
+---
+## 25.9.0
+### Upcoming Breaking Changes
+- `eea*` RPC methods and other privacy supporting classes will be removed since Privacy feature has been removed from Besu 25.6.0 https://github.com/hyperledger/besu/releases/tag/25.6.0
+
+### Features Added
+- Updated Teku libraries dependencies for latest network configurations
+- `health_status` RPC method under the eth1 subcommand
+- Support for Optimism op-signer
+- Acceptance tests for FULU fork.
+
+### Bug Fixes
+- Fixed EIP-712 `eth_signTypedData` JSON-RPC method. [#1012][issue_1012]
+
+[issue_1012]: https://github.com/Consensys/web3signer/issues/1012
+
+---
+## 25.6.0
+### Breaking Changes
+- Deprecated CLI option `--azure-secrets-tags` has been removed. Use `--azure-tags` instead.
+- USB Armory II/Interlock support has been removed.
+- YubiHSM 2 support has been removed.
+
+### Features Added
+- Updated Teku libraries to handle BPO configurations
+
+### Known Issues
+Few customers have reported increasing memory usage with `/reload` API endpoint. We are investigating this issue and
+will provide a fix in the next release. As a workaround, please restart Web3Signer instance when adding or removing keys.
+
+---
 ## 25.4.1
 ### Upcoming Breaking Changes
 > [!IMPORTANT]
@@ -26,12 +88,12 @@
 ## 25.2.0
 
 > [!IMPORTANT]
-> This is a required update for nodes running on Holesky or Sepolia network as it contains the configuration for the 
+> This is a required update for nodes running on Holesky or Sepolia network as it contains the configuration for the
 Electra hard fork.
 
 ### Breaking Changes
 - The behavior of reload API endpoint has been modified due to issue [#1018][issue_1018] implemented by PR [#1054][pr_1054].
-The reload API call will remove stale keys therefore they will not be return in public_keys endpoint neither will be 
+The reload API call will remove stale keys therefore they will not be return in public_keys endpoint neither will be
 able to perform any signing requests.
 - The AWS secrets manager and KMS tag filter cli options has been modified. Following cli options has been removed:
 ```
@@ -85,17 +147,17 @@ The above are replaced by:
 ## 24.6.0
 
 ### Upcoming Breaking Changes
-- This is the last Web3Signer release to use Java 17. Web3Signer will start mandating Java 21 for build and runtime after 
-this release. The Web3Signer docker image will also use Java 21, however, binary distributions (.tar.gz/.zip) will 
+- This is the last Web3Signer release to use Java 17. Web3Signer will start mandating Java 21 for build and runtime after
+this release. The Web3Signer docker image will also use Java 21, however, binary distributions (.tar.gz/.zip) will
 require Java 21 to be available on the host machine.
 - This is the last Web3Signer release to use the "filecoin" mode. The "filecoin" mode will be removed in a future release.
 
 ### Breaking Changes
 - Use Java 21 for build and runtime. Remove Java 17 variant of docker image. zip/tar.gz distributions will require Java 21 or above to run Web3Signer.
-- The Web3Signer metrics are now compatible with OpenMetrics data model. This results in the names of counter metrics to append `_total` suffix. Users may need to update their dashboards to reflect these changes. 
+- The Web3Signer metrics are now compatible with OpenMetrics data model. This results in the names of counter metrics to append `_total` suffix. Users may need to update their dashboards to reflect these changes.
 
 ### Features Added
-- Added endpoint `/api/v1/eth2/ext/sign/:identifier` which is enabled using cli option `--Xsigning-ext-enabled=true`. 
+- Added endpoint `/api/v1/eth2/ext/sign/:identifier` which is enabled using cli option `--Xsigning-ext-enabled=true`.
 This endpoint allows signing of additional data not covered by the remoting API specs. [#982](https://github.com/Consensys/web3signer/pull/982)
 
 ### Bugs fixed
@@ -158,7 +220,7 @@ This is an optional release for mainnet Ethereum and it includes the updated net
 
 ### Features Added
 - Aws bulk loading for secp256k1 keys in eth1 mode [#889](https://github.com/Consensys/web3signer/pull/889)
-- Add High Watermark functionality [#696](https://github.com/Consensys/web3signer/issues/696) 
+- Add High Watermark functionality [#696](https://github.com/Consensys/web3signer/issues/696)
   - Update `watermark-repair` subcommand with new options `--set-high-watermark`, `--remove-high-watermark` [#912](https://github.com/Consensys/web3signer/pull/912)
   - Add GET `/highWatermark` to eth2 endpoints [#908](https://github.com/Consensys/web3signer/pull/908)
 - Add network configuration for revised Holesky testnet
@@ -187,7 +249,7 @@ This is an optional release for mainnet Ethereum and it includes the updated net
 - Use Java 17 for build and runtime. Remove Java 11 variant of docker image. zip/tar.gz distributions will require Java 17 or above to run Web3Signer.
 - Eth2 Azure command line option --azure-secrets-tags is now deprecated and is replaced with --azure-tags. The --azure-secrets-tags option will be removed in a future release.
 
-- 
+-
 ### Features Added
 - Add support for SECP256K1 remote signing using AWS Key Management Service. [#501](https://github.com/Consensys/web3signer/issues/501)
 - Azure bulk mode support for loading multiline (`\n` delimited, up to 200) keys per secret.
@@ -201,7 +263,7 @@ This is an optional release for mainnet Ethereum and it includes the updated net
 - Java 17 for build and runtime. [#870](https://github.com/Consensys/web3signer/pull/870)
 - Update internal teku library to 23.8.0 [#876](https://github.com/Consensys/web3signer/pull/876)
 - Add support for [Lukso network](https://lukso.network/) `--network=lukso`
-- Deprecate `signingRoot` while currently supporting both `signingRoot` and `signing_root` in Eth2 signing request body.  
+- Deprecate `signingRoot` while currently supporting both `signingRoot` and `signing_root` in Eth2 signing request body.
 
 ### Bugs fixed
 - Support long name aliases in environment variables and YAML configuration [#825](https://github.com/Consensys/web3signer/pull/825)
@@ -215,20 +277,20 @@ We have decided to deprecate our [EthSigner](https://github.com/Consensys/EthSig
 
 Rest assured, we are not dropping existing EthSigner functionality. We are updating Web3Signer to incorporate the functionalities of EthSigner alongside everything else in Web3Signer. We will ensure a smooth transition by maintaining EthSigner with necessary patches for an additional six months. We hope this provides ample time for any necessary migration to Web3Signer.
 
-**We have begun adding EthSigner functionality to Web3Signer. This is a work in progress and not complete.**  
+**We have begun adding EthSigner functionality to Web3Signer. This is a work in progress and not complete.**
 
 ### Features Added
 - Optional Azure bulk loading tags support using cli option `--azure-secrets-tags`.
 - Support Prometheus Push Gateway Metrics [#796](https://github.com/ConsenSys/web3signer/pull/796)
-- Cache Genesis Validators Root (GVR) in-memory on first database lookup. This would eliminate further database lookups 
+- Cache Genesis Validators Root (GVR) in-memory on first database lookup. This would eliminate further database lookups
 for GVR during sign operations and improve their performance. [#600](https://github.com/ConsenSys/web3signer/issues/600)
 - Add RPC proxy support to execution client under the eth1 subcommand [#775](https://github.com/ConsenSys/web3signer/pull/775)
 - Add eth_accounts RPC method under the eth1 subcommand [#784](https://github.com/ConsenSys/web3signer/pull/784)
 
 ### Bugs Fixed
 - Upgrade jackson and vertx to upgrade snakeyaml to 2.0 to fix CVE-2022-1471
-- Fixed handling of very large number (30,000+) of signing metadata files with Hashicorp connection by introducing 
-experimental flag to disable parallel processing `--Xmetadata-files-parallel-processing-enabled`. 
+- Fixed handling of very large number (30,000+) of signing metadata files with Hashicorp connection by introducing
+experimental flag to disable parallel processing `--Xmetadata-files-parallel-processing-enabled`.
 [#794](https://github.com/ConsenSys/web3signer/pull/794)
 - Fixed startup error with web3signer where openAPI spec cannot be loaded [#772](https://github.com/ConsenSys/web3signer/issues/772)
 - Removed unmaintained and out-of-date helm chart [#802](https://github.com/ConsenSys/web3signer/pull/802)
@@ -270,13 +332,13 @@ experimental flag to disable parallel processing `--Xmetadata-files-parallel-pro
 ---
 ## 23.2.0
 ### Features Added
-- AWS Secrets Manager bulkload mode can now load multiple keys from same secret where keys are separated by line terminating 
+- AWS Secrets Manager bulkload mode can now load multiple keys from same secret where keys are separated by line terminating
 character (such as `\n`). [#706](https://github.com/ConsenSys/web3signer/issues/706)
 
 ---
 ## 23.1.0
 ### Features Added
-- Multiple Signing Key configurations can be specified in single YAML file using triple-dash `---` separator. 
+- Multiple Signing Key configurations can be specified in single YAML file using triple-dash `---` separator.
 [#689](https://github.com/ConsenSys/web3signer/issues/689)
 - Reloading of signing key configuration file (via `/reload` endpoint) will process new or modified configuration files. [#689](https://github.com/ConsenSys/web3signer/issues/689)
 - Updated Teku libraries version to 22.12.0
@@ -287,17 +349,17 @@ character (such as `\n`). [#706](https://github.com/ConsenSys/web3signer/issues/
 ---
 ## 22.11.0
 ### Breaking Changes
-- Slashing protection imports will now only fail for an individual validator instead for all validators allowing partial 
+- Slashing protection imports will now only fail for an individual validator instead for all validators allowing partial
 import if there is valid and invalid data.
 
 ### Features Added
 - Introduced cli option to specify Hikari configuration for pruning database connection [#661](https://github.com/ConsenSys/web3signer/issues/661)
-- Better database pruning default values: Pruning enabled by default with 
-`slashing-protection-pruning-epochs-to-keep = 250`, `slashing-protection-pruning-at-boot-enabled = false` and 
+- Better database pruning default values: Pruning enabled by default with
+`slashing-protection-pruning-epochs-to-keep = 250`, `slashing-protection-pruning-at-boot-enabled = false` and
 `slashing-protection-pruning-interval = 12`.
 - Improved performance for slashing protection import
-- Introduced experimental cli option `--Xslashing-protection-db-connection-pool-enabled` to disable internal database 
-connection pool (Hikari) to allow using external database connection pool such as pgBouncer. 
+- Introduced experimental cli option `--Xslashing-protection-db-connection-pool-enabled` to disable internal database
+connection pool (Hikari) to allow using external database connection pool such as pgBouncer.
 `--slashing-protection-db-pool-configuration-file` and `--slashing-protection-pruning-db-pool-configuration-file` can be
 reused to specify PG Datasource properties. [#662](https://github.com/ConsenSys/web3signer/issues/662)
 - Added new subcommand watermark-repair to update low watermarks
@@ -321,7 +383,7 @@ reused to specify PG Datasource properties. [#662](https://github.com/ConsenSys/
 
 ## 22.8.0
 ### Features Added
-- Added health check endpoint [#538](https://github.com/ConsenSys/web3signer/issues/538). 
+- Added health check endpoint [#538](https://github.com/ConsenSys/web3signer/issues/538).
 - Introduced `--slashing-protection-db-health-check-timeout-milliseconds` to specify the timeout of the slashing db health check procedure.
 - Introduced `--slashing-protection-db-health-check-interval-milliseconds` to specify the interval between slashing db health check procedures.
 - Updated Teku libraries version (support for Prater/Görli merge).
@@ -411,7 +473,7 @@ reused to specify PG Datasource properties. [#662](https://github.com/ConsenSys/
 ## 21.10.3
 
 ### Bugs fixed
-- Updated log4j to 2.16.0 to mitigate JNDI attack via thread context. 
+- Updated log4j to 2.16.0 to mitigate JNDI attack via thread context.
 ---
 
 ## 21.10.2
@@ -426,7 +488,7 @@ reused to specify PG Datasource properties. [#662](https://github.com/ConsenSys/
 - The default docker image now uses JDK 17 instead of 11. The JDK 11 image is still available with the version suffix `-jdk11`
 
 ### Breaking Changes
-- The docker image now uses `web3signer` as user/group instead of `root` which may result in compatibility/permissions issues with existing directory mounts.  
+- The docker image now uses `web3signer` as user/group instead of `root` which may result in compatibility/permissions issues with existing directory mounts.
 
 ### Bugs Fixed
 - Updated log4j and explicitly disabled format message lookups.
@@ -445,7 +507,7 @@ reused to specify PG Datasource properties. [#662](https://github.com/ConsenSys/
 ## 21.8.1
 
 ### Features Added
-- Added sign type BLOCK_V2 to support block signing for Phase0, Altair and future forks (Eth2 mode). BLOCK is not removed for 
+- Added sign type BLOCK_V2 to support block signing for Phase0, Altair and future forks (Eth2 mode). BLOCK is not removed for
 backward compatibility with PHASE0 blocks.
 - Upgraded Teku libraries to 21.8.2 which added support for Altair upgrade on Prater testnet at epoch 36660.
 
@@ -526,7 +588,7 @@ backward compatibility with PHASE0 blocks.
 - Eth2 slashing protection metrics category was not working on CLI
 - Update Filecoin RPC to be compatible with Lotus remote wallet API
 - Eth2 slashing protection returns a 412 http status code for a slashing violation
-- Signing with empty slashing database would sometimes fail due multiple genesis validator root values inserting concurrently 
+- Signing with empty slashing database would sometimes fail due multiple genesis validator root values inserting concurrently
 - Resolved help text anomalies on command line
 
 ## 0.2.0
@@ -547,6 +609,6 @@ backward compatibility with PHASE0 blocks.
 Initial release of Eth2Signer
 
 ### Features Added
-- Signing of data using a BLS key. Supports BLS private keys in unencrypted files, BLS12-381 keystore files and keys in Hashicorp 
+- Signing of data using a BLS key. Supports BLS private keys in unencrypted files, BLS12-381 keystore files and keys in Hashicorp
 - TLS support for rest API
 - OpenAPI documentation

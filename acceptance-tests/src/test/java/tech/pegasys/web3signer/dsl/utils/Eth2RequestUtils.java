@@ -15,17 +15,6 @@ package tech.pegasys.web3signer.dsl.utils;
 import static java.util.Collections.emptyList;
 import static tech.pegasys.web3signer.core.util.DepositSigningRootUtil.computeDomain;
 
-import tech.pegasys.teku.api.schema.AggregateAndProof;
-import tech.pegasys.teku.api.schema.Attestation;
-import tech.pegasys.teku.api.schema.AttestationData;
-import tech.pegasys.teku.api.schema.BLSPubKey;
-import tech.pegasys.teku.api.schema.BLSSignature;
-import tech.pegasys.teku.api.schema.BeaconBlock;
-import tech.pegasys.teku.api.schema.BeaconBlockBody;
-import tech.pegasys.teku.api.schema.Checkpoint;
-import tech.pegasys.teku.api.schema.Eth1Data;
-import tech.pegasys.teku.api.schema.Fork;
-import tech.pegasys.teku.api.schema.VoluntaryExit;
 import tech.pegasys.teku.infrastructure.async.SafeFuture;
 import tech.pegasys.teku.infrastructure.bytes.Bytes4;
 import tech.pegasys.teku.infrastructure.unsigned.UInt64;
@@ -48,6 +37,17 @@ import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.ForkInfo;
 import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.RandaoReveal;
 import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.SyncCommitteeMessage;
 import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.ValidatorRegistration;
+import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.schema.AggregateAndProof;
+import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.schema.Attestation;
+import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.schema.AttestationData;
+import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.schema.BLSPubKey;
+import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.schema.BLSSignature;
+import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.schema.BeaconBlock;
+import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.schema.BeaconBlockBody;
+import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.schema.Checkpoint;
+import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.schema.Eth1Data;
+import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.schema.Fork;
+import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.schema.VoluntaryExit;
 import tech.pegasys.web3signer.core.util.DepositSigningRootUtil;
 
 import java.util.Random;
@@ -89,36 +89,34 @@ public class Eth2RequestUtils {
       new Eth2BlockSigningRequestUtil(SpecMilestone.ALTAIR);
 
   public static Eth2SigningRequestBody createCannedRequest(final ArtifactType artifactType) {
-    switch (artifactType) {
-      case DEPOSIT:
-        return createDepositRequest();
-      case VOLUNTARY_EXIT:
-        return createVoluntaryExit();
-      case RANDAO_REVEAL:
-        return createRandaoReveal();
-      case BLOCK:
-        return createBlockRequest();
-      case BLOCK_V2:
-        return ALTAIR_BLOCK_UTIL.createBlockV2Request();
-      case ATTESTATION:
-        return createAttestationRequest();
-      case AGGREGATION_SLOT:
-        return createAggregationSlot();
-      case AGGREGATE_AND_PROOF:
-        return createAggregateAndProof(true);
-      case AGGREGATE_AND_PROOF_V2:
-        return createAggregateAndProof(false);
-      case SYNC_COMMITTEE_MESSAGE:
-        return createSyncCommitteeMessageRequest();
-      case SYNC_COMMITTEE_SELECTION_PROOF:
-        return createSyncCommitteeSelectionProofRequest();
-      case SYNC_COMMITTEE_CONTRIBUTION_AND_PROOF:
-        return createSyncCommitteeContributionAndProofRequest();
-      case VALIDATOR_REGISTRATION:
-        return createValidatorRegistrationRequest();
-      default:
-        throw new IllegalStateException("Unknown eth2 signing type");
-    }
+    return switch (artifactType) {
+      case DEPOSIT -> createDepositRequest();
+
+      case VOLUNTARY_EXIT -> createVoluntaryExit();
+
+      case RANDAO_REVEAL -> createRandaoReveal();
+
+      case BLOCK -> createBlockRequest();
+
+      case BLOCK_V2 -> ALTAIR_BLOCK_UTIL.createBlockV2Request();
+
+      case ATTESTATION -> createAttestationRequest();
+
+      case AGGREGATION_SLOT -> createAggregationSlot();
+
+      case AGGREGATE_AND_PROOF -> createAggregateAndProof(true);
+
+      case AGGREGATE_AND_PROOF_V2 -> createAggregateAndProof(false);
+
+      case SYNC_COMMITTEE_MESSAGE -> createSyncCommitteeMessageRequest();
+
+      case SYNC_COMMITTEE_SELECTION_PROOF -> createSyncCommitteeSelectionProofRequest();
+
+      case SYNC_COMMITTEE_CONTRIBUTION_AND_PROOF ->
+          createSyncCommitteeContributionAndProofRequest();
+
+      case VALIDATOR_REGISTRATION -> createValidatorRegistrationRequest();
+    };
   }
 
   private static Eth2SigningRequestBody createAggregateAndProof(final boolean isLegacy) {
@@ -151,12 +149,17 @@ public class Eth2RequestUtils {
         SIGNING_ROOT_UTIL.signingRootForSignAggregateAndProof(
             aggregateAndProof.asInternalAggregateAndProof(SPEC), forkInfo.asInternalForkInfo());
     return Eth2SigningRequestBodyBuilder.anEth2SigningRequestBody()
-        .withType(isLegacy ? ArtifactType.AGGREGATE_AND_PROOF : ArtifactType.AGGREGATE_AND_PROOF_V2)
+        .withType(getAggregateAndProofType(isLegacy))
         .withSigningRoot(signingRoot)
         .withForkInfo(forkInfo)
         .withAggregateAndProofV2(
             new AggregateAndProofV2(isLegacy ? null : SpecMilestone.PHASE0, aggregateAndProof))
         .build();
+  }
+
+  @SuppressWarnings("deprecation")
+  private static ArtifactType getAggregateAndProofType(final boolean isLegacy) {
+    return isLegacy ? ArtifactType.AGGREGATE_AND_PROOF : ArtifactType.AGGREGATE_AND_PROOF_V2;
   }
 
   private static Eth2SigningRequestBody createAggregationSlot() {
@@ -258,7 +261,7 @@ public class Eth2RequestUtils {
       final UInt64 slot, final Bytes32 stateRoot) {
 
     final ForkInfo forkInfo = forkInfo();
-    final BeaconBlock block =
+    final tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.schema.BeaconBlock block =
         new BeaconBlock(
             slot,
             UInt64.valueOf(5),
@@ -413,13 +416,15 @@ public class Eth2RequestUtils {
         .build();
   }
 
-  private static tech.pegasys.teku.api.schema.altair.ContributionAndProof
+  private static tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.schema.altair
+          .ContributionAndProof
       getContributionAndProof() {
-    return new tech.pegasys.teku.api.schema.altair.ContributionAndProof(
+    return new tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.schema.altair
+        .ContributionAndProof(
         CONTRIBUTION_AND_PROOF.getAggregatorIndex(),
         new BLSSignature(CONTRIBUTION_AND_PROOF.getSelectionProof()),
-        new tech.pegasys.teku.api.schema.altair.SyncCommitteeContribution(
-            CONTRIBUTION_AND_PROOF.getContribution()));
+        new tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.schema.altair
+            .SyncCommitteeContribution(CONTRIBUTION_AND_PROOF.getContribution()));
   }
 
   private static SafeFuture<Bytes> signingRootFromSyncCommitteeUtils(

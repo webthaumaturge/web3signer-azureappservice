@@ -22,7 +22,6 @@ import tech.pegasys.web3signer.core.config.MetricsPushOptions;
 import tech.pegasys.web3signer.core.config.TlsOptions;
 import tech.pegasys.web3signer.core.metrics.vertx.VertxMetricsAdapterFactory;
 import tech.pegasys.web3signer.core.service.http.AzureAppClientPublicKeyAllowListHandler;
-import tech.pegasys.web3signer.core.routes.SwaggerUIRoute;
 import tech.pegasys.web3signer.core.service.http.HostAllowListHandler;
 import tech.pegasys.web3signer.core.service.http.handlers.LogErrorHandler;
 import tech.pegasys.web3signer.core.service.http.handlers.UpcheckHandler;
@@ -117,7 +116,7 @@ public abstract class Runner implements Runnable, AutoCloseable {
 
     try {
       createVersionMetric(metricsSystem);
-      metricsService = MetricsService.create(vertx, metricsConfiguration, metricsSystem);
+      metricsService = MetricsService.create(metricsConfiguration, metricsSystem);
       metricsService.ifPresent(MetricsService::start);
 
       // load the artifact signer providers in order ...
@@ -141,7 +140,7 @@ public abstract class Runner implements Runnable, AutoCloseable {
           .route()
           .handler(
               CorsHandler.create()
-                  .addRelativeOrigin(buildCorsRegexFromConfig())
+                  .addOriginWithRegex(buildCorsRegexFromConfig())
                   .allowedHeader("*")
                   .allowedMethod(HttpMethod.GET)
                   .allowedMethod(HttpMethod.POST)
@@ -168,9 +167,6 @@ public abstract class Runner implements Runnable, AutoCloseable {
           new Context(router, metricsSystem, errorHandler, vertx, artifactSignerProviders);
 
       populateRouter(context);
-      if (baseConfig.isSwaggerUIEnabled()) {
-        new SwaggerUIRoute(router).register();
-      }
 
       final HttpServer httpServer = createServerAndWait(vertx, router);
       final String tlsStatus = baseConfig.getTlsOptions().isPresent() ? "enabled" : "disabled";
@@ -227,7 +223,7 @@ public abstract class Runner implements Runnable, AutoCloseable {
 
   private void createVersionMetric(final MetricsSystem metricsSystem) {
     metricsSystem
-        .createLabelledGauge(
+        .createLabelledSuppliedGauge(
             StandardMetricCategory.PROCESS, "release", "Release information", "version")
         .labels(() -> 1, ApplicationInfo.version());
   }

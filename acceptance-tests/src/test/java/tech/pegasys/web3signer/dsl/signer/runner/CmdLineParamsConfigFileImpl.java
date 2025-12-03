@@ -54,6 +54,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
@@ -89,7 +90,7 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
     yamlConfigMap.put("key-config-path", signerConfig.getKeyStorePath().toString());
 
     if (signerConfig.isMetricsEnabled()) {
-      yamlConfigMap.put("metrics-enabled", Boolean.TRUE);
+      yamlConfigMap.put("metrics-enabled", true);
       yamlConfigMap.put("metrics-port", signerConfig.getMetricsPort());
       if (!signerConfig.getMetricsHostAllowList().isEmpty()) {
         yamlConfigMap.put("metrics-host-allowlist", signerConfig.getMetricsHostAllowList());
@@ -99,10 +100,7 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
       }
     }
 
-    if (signerConfig.isSwaggerUIEnabled()) {
-      yamlConfigMap.put("swagger-ui-enabled", Boolean.TRUE);
-    }
-    yamlConfigMap.put("access-logs-enabled", Boolean.TRUE);
+    yamlConfigMap.put("access-logs-enabled", true);
 
     if (signerConfig.isHttpDynamicPortAllocation()) {
       yamlConfigMap.put("data-path", dataPath.toAbsolutePath().toString());
@@ -140,8 +138,15 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
           .getGcpParameters()
           .ifPresent(gcpParameters -> yamlConfigMap.putAll(gcpBulkLoadingOptions(gcpParameters)));
 
+      signerConfig
+          .getAzureKeyVaultParameters()
+          .ifPresent(
+              azureParams ->
+                  yamlConfigMap.putAll(
+                      azureBulkLoadingOptions(signerConfig.getMode(), azureParams)));
+
       if (signerConfig.isSigningExtEnabled()) {
-        yamlConfigMap.put("eth2.Xsigning-ext-enabled", Boolean.TRUE);
+        yamlConfigMap.put("eth2.Xsigning-ext-enabled", true);
       }
 
       signerConfig
@@ -192,7 +197,7 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
   private static Map<String, Object> commitBoostOptions(
       final Pair<Path, Path> commitBoostParameters) {
     var yamlConfigMap = new HashMap<String, Object>();
-    yamlConfigMap.put("eth2.commit-boost-api-enabled", Boolean.TRUE);
+    yamlConfigMap.put("eth2.commit-boost-api-enabled", true);
     yamlConfigMap.put(
         "eth2.proxy-keystores-path", commitBoostParameters.getLeft().toAbsolutePath().toString());
     yamlConfigMap.put(
@@ -224,14 +229,28 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
   private Map<String, Object> azureBulkLoadingOptions(
       final String mode, final AzureKeyVaultParameters azureParams) {
     var yamlConfigMap = new HashMap<String, Object>();
-    yamlConfigMap.put(mode + ".azure-vault-enabled", Boolean.TRUE);
+    yamlConfigMap.put(mode + ".azure-vault-enabled", true);
     yamlConfigMap.put(mode + ".azure-vault-auth-mode", azureParams.getAuthenticationMode().name());
     yamlConfigMap.put(mode + ".azure-vault-name", azureParams.getKeyVaultName());
     yamlConfigMap.put(mode + ".azure-client-id", azureParams.getClientId());
     yamlConfigMap.put(mode + ".azure-client-secret", azureParams.getClientSecret());
     yamlConfigMap.put(mode + ".azure-tenant-id", azureParams.getTenantId());
-    yamlConfigMap.put(mode + ".azure-tags", azureParams.getTags());
+    if (!azureParams.getTags().isEmpty()) {
+      yamlConfigMap.put(mode + ".azure-tags", mapToStringConcatenated(azureParams.getTags()));
+    }
     return yamlConfigMap;
+  }
+
+  /**
+   * Tags are key=value|key2=value2 format in the config file.
+   *
+   * @param map Tag Map
+   * @return key=value|key2=value2
+   */
+  private String mapToStringConcatenated(final Map<String, String> map) {
+    return map.entrySet().stream()
+        .map(entry -> entry.getKey() + "=" + entry.getValue())
+        .collect(Collectors.joining("|"));
   }
 
   private CommandArgs createSubCommandArgs() {
@@ -252,7 +271,7 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
       final WatermarkRepairParameters watermarkRepairParameters =
           signerConfig.getWatermarkRepairParameters().get();
       if (watermarkRepairParameters.isRemoveHighWatermark()) {
-        yamlConfigMap.put("eth2.watermark-repair.remove-high-watermark", Boolean.TRUE);
+        yamlConfigMap.put("eth2.watermark-repair.remove-high-watermark", true);
       } else {
         yamlConfigMap.put("eth2.watermark-repair.slot", watermarkRepairParameters.getSlot());
         yamlConfigMap.put("eth2.watermark-repair.epoch", watermarkRepairParameters.getEpoch());
@@ -280,7 +299,7 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
           "tls-keystore-password-file", serverTlsOptions.getKeyStorePasswordFile().toString());
 
       if (serverTlsOptions.getClientAuthConstraints().isEmpty()) {
-        yamlConfigMap.put("tls-allow-any-client", Boolean.TRUE);
+        yamlConfigMap.put("tls-allow-any-client", true);
       } else {
         final ClientAuthConstraints constraints = serverTlsOptions.getClientAuthConstraints().get();
         if (constraints.getKnownClientsFile().isPresent()) {
@@ -288,7 +307,7 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
               "tls-known-clients-file", constraints.getKnownClientsFile().get().getPath());
         }
         if (constraints.isCaAuthorizedClientAllowed()) {
-          yamlConfigMap.put("tls-allow-ca-clients", Boolean.TRUE);
+          yamlConfigMap.put("tls-allow-ca-clients", true);
         }
       }
     }
@@ -304,7 +323,7 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
     }
 
     final ClientTlsOptions clientTlsOptions = optionalClientTlsOptions.get();
-    yamlConfigMap.put("eth1.downstream-http-tls-enabled", Boolean.TRUE);
+    yamlConfigMap.put("eth1.downstream-http-tls-enabled", true);
 
     clientTlsOptions
         .getKeyStoreOptions()
@@ -324,7 +343,7 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
           clientTlsOptions.getKnownServersFile().get().toAbsolutePath());
     }
     if (!clientTlsOptions.isCaAuthEnabled()) {
-      yamlConfigMap.put("eth1.downstream-http-tls-ca-auth-enabled", Boolean.FALSE);
+      yamlConfigMap.put("eth1.downstream-http-tls-ca-auth-enabled", false);
     }
 
     return yamlConfigMap;
@@ -400,6 +419,10 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
           "eth2.Xnetwork-electra-fork-epoch", signerConfig.getElectraForkEpoch().get());
     }
 
+    if (signerConfig.getFuluForkEpoch().isPresent()) {
+      yamlConfigMap.put("eth2.Xnetwork-fulu-fork-epoch", signerConfig.getFuluForkEpoch().get());
+    }
+
     if (signerConfig.getNetwork().isPresent()) {
       yamlConfigMap.put("eth2.network", signerConfig.getNetwork().get());
     }
@@ -444,7 +467,8 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
 
     if (!awsVaultParameters.getTags().isEmpty()) {
       yamlConfigMap.put(
-          "eth2." + PrefixUtil.stripPrefix(AWS_SECRETS_TAG_OPTION), awsVaultParameters.getTags());
+          "eth2." + PrefixUtil.stripPrefix(AWS_SECRETS_TAG_OPTION),
+          mapToStringConcatenated(awsVaultParameters.getTags()));
     }
 
     awsVaultParameters
@@ -505,7 +529,8 @@ public class CmdLineParamsConfigFileImpl implements CmdLineParamsBuilder {
 
     if (!awsVaultParameters.getTags().isEmpty()) {
       yamlConfigMap.put(
-          "eth1." + PrefixUtil.stripPrefix(AWS_KMS_TAG_OPTION), awsVaultParameters.getTags());
+          "eth1." + PrefixUtil.stripPrefix(AWS_KMS_TAG_OPTION),
+          mapToStringConcatenated(awsVaultParameters.getTags()));
     }
 
     awsVaultParameters

@@ -61,7 +61,6 @@ public class SignerConfiguration {
   private final Optional<Path> slashingImportPath;
   private final boolean enableSlashingPruning;
   private final boolean enableSlashingPruningAtBoot;
-  private final boolean swaggerUIEnabled;
   private final boolean useConfigFile;
   private final long slashingPruningEpochsToKeep;
   private final long slashingPruningSlotsPerEpoch;
@@ -72,6 +71,7 @@ public class SignerConfiguration {
   private final Optional<Long> capellaForkEpoch;
   private final Optional<Long> denebForkEpoch;
   private final Optional<Long> electraForkEpoch;
+  private final Optional<Long> fuluForkEpoch;
   private final Optional<String> network;
   private final boolean keyManagerApiEnabled;
   private Optional<WatermarkRepairParameters> watermarkRepairParameters;
@@ -115,7 +115,6 @@ public class SignerConfiguration {
       final long slashingPruningEpochsToKeep,
       final long slashingPruningSlotsPerEpoch,
       final long slashingPruningSchedule,
-      final boolean swaggerUIEnabled,
       final boolean useConfigFile,
       final Optional<Path> slashingDbPoolConfigurationFile,
       final Optional<Long> altairForkEpoch,
@@ -123,6 +122,7 @@ public class SignerConfiguration {
       final Optional<Long> capellaForkEpoch,
       final Optional<Long> denebForkEpoch,
       final Optional<Long> electraForkEpoch,
+      final Optional<Long> fuluForkEpoch,
       final Optional<String> network,
       final boolean keyManagerApiEnabled,
       final Optional<WatermarkRepairParameters> watermarkRepairParameters,
@@ -162,7 +162,6 @@ public class SignerConfiguration {
     this.slashingPruningEpochsToKeep = slashingPruningEpochsToKeep;
     this.slashingPruningSlotsPerEpoch = slashingPruningSlotsPerEpoch;
     this.slashingPruningInterval = slashingPruningSchedule;
-    this.swaggerUIEnabled = swaggerUIEnabled;
     this.useConfigFile = useConfigFile;
     this.slashingProtectionDbPoolConfigurationFile = slashingDbPoolConfigurationFile;
     this.altairForkEpoch = altairForkEpoch;
@@ -170,6 +169,7 @@ public class SignerConfiguration {
     this.capellaForkEpoch = capellaForkEpoch;
     this.denebForkEpoch = denebForkEpoch;
     this.electraForkEpoch = electraForkEpoch;
+    this.fuluForkEpoch = fuluForkEpoch;
     this.network = network;
     this.keyManagerApiEnabled = keyManagerApiEnabled;
     this.watermarkRepairParameters = watermarkRepairParameters;
@@ -301,10 +301,6 @@ public class SignerConfiguration {
     return slashingPruningInterval;
   }
 
-  public boolean isSwaggerUIEnabled() {
-    return swaggerUIEnabled;
-  }
-
   public boolean useConfigFile() {
     return useConfigFile;
   }
@@ -331,6 +327,10 @@ public class SignerConfiguration {
 
   public Optional<Long> getElectraForkEpoch() {
     return electraForkEpoch;
+  }
+
+  public Optional<Long> getFuluForkEpoch() {
+    return fuluForkEpoch;
   }
 
   public Optional<String> getNetwork() {

@@ -18,22 +18,20 @@ import static org.assertj.core.api.AssertionsForClassTypes.fail;
 
 import tech.pegasys.teku.bls.BLSKeyPair;
 import tech.pegasys.teku.bls.BLSPublicKey;
-import tech.pegasys.teku.bls.keystore.KeyStore;
-import tech.pegasys.teku.bls.keystore.KeyStoreLoader;
-import tech.pegasys.teku.bls.keystore.model.Cipher;
-import tech.pegasys.teku.bls.keystore.model.CipherFunction;
-import tech.pegasys.teku.bls.keystore.model.KdfParam;
-import tech.pegasys.teku.bls.keystore.model.KeyStoreData;
-import tech.pegasys.teku.bls.keystore.model.SCryptParam;
 import tech.pegasys.web3signer.BLSTestUtil;
+import tech.pegasys.web3signer.bls.keystore.KeyStore;
+import tech.pegasys.web3signer.bls.keystore.KeyStoreLoader;
+import tech.pegasys.web3signer.bls.keystore.model.Cipher;
+import tech.pegasys.web3signer.bls.keystore.model.CipherFunction;
+import tech.pegasys.web3signer.bls.keystore.model.KdfParam;
+import tech.pegasys.web3signer.bls.keystore.model.KeyStoreData;
+import tech.pegasys.web3signer.bls.keystore.model.SCryptParam;
 import tech.pegasys.web3signer.keystorage.aws.AwsSecretsManagerProvider;
 import tech.pegasys.web3signer.keystorage.hashicorp.HashicorpConnectionFactory;
 import tech.pegasys.web3signer.signing.ArtifactSigner;
 import tech.pegasys.web3signer.signing.BlsArtifactSigner;
 import tech.pegasys.web3signer.signing.KeyType;
 import tech.pegasys.web3signer.signing.config.AzureKeyVaultFactory;
-import tech.pegasys.web3signer.signing.config.metadata.interlock.InterlockKeyProvider;
-import tech.pegasys.web3signer.signing.config.metadata.yubihsm.YubiHsmOpaqueDataProvider;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -63,8 +61,6 @@ class BlsArtifactSignerFactoryTest {
   private ArtifactSignerFactory artifactSignerFactory;
 
   private Vertx vertx;
-  private InterlockKeyProvider interlockKeyProvider;
-  private YubiHsmOpaqueDataProvider yubiHsmOpaqueDataProvider;
   private AwsSecretsManagerProvider awsSecretsManagerProvider;
   private AzureKeyVaultFactory azureKeyVaultFactory;
 
@@ -84,8 +80,6 @@ class BlsArtifactSignerFactoryTest {
   @BeforeEach
   void setup() {
     vertx = Vertx.vertx();
-    interlockKeyProvider = new InterlockKeyProvider(vertx);
-    yubiHsmOpaqueDataProvider = new YubiHsmOpaqueDataProvider();
     awsSecretsManagerProvider = new AwsSecretsManagerProvider(100);
     azureKeyVaultFactory = new AzureKeyVaultFactory();
 
@@ -94,8 +88,6 @@ class BlsArtifactSignerFactoryTest {
             configDir,
             new NoOpMetricsSystem(),
             new HashicorpConnectionFactory(),
-            interlockKeyProvider,
-            yubiHsmOpaqueDataProvider,
             awsSecretsManagerProvider,
             (args) -> new BlsArtifactSigner(args.getKeyPair(), args.getOrigin()),
             azureKeyVaultFactory);
@@ -103,8 +95,6 @@ class BlsArtifactSignerFactoryTest {
 
   @AfterEach
   void cleanup() {
-    interlockKeyProvider.close();
-    yubiHsmOpaqueDataProvider.close();
     vertx.close();
   }
 
@@ -148,7 +138,7 @@ class BlsArtifactSignerFactoryTest {
 
     assertThatThrownBy(() -> artifactSignerFactory.create(fileKeyStoreMetadata))
         .isInstanceOf(SigningMetadataException.class)
-        .hasMessageStartingWith("KeyStore file not found")
+        .hasMessageStartingWith("Failed to read keystore file:")
         .hasMessageContaining(nonExistingKeystoreFile.toString());
   }
 
