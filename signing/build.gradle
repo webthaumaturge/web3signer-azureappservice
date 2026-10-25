@@ -9,7 +9,7 @@ jar {
       'Specification-Title': archiveBaseName,
       'Specification-Version': project.version,
       'Implementation-Title': archiveBaseName,
-      'Implementation-Version': calculateVersion()
+      'Implementation-Version': buildVersion
       )
   }
 }
@@ -19,6 +19,7 @@ dependencies {
   implementation project(':keystorage')
   implementation project(":bls-keystore")
   implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml'
+  implementation 'tools.jackson.core:jackson-core'
   implementation 'com.github.arteam:simple-json-rpc-server'
   implementation 'commons-io:commons-io'
   implementation 'io.vertx:vertx-core'
@@ -36,7 +37,7 @@ dependencies {
   implementation 'io.consensys.tuweni:tuweni-net'
   implementation 'com.google.guava:guava'
   implementation 'org.bouncycastle:bcprov-jdk18on'
-  implementation 'com.github.ben-manes.caffeine:caffeine:3.2.2'
+  implementation 'com.github.ben-manes.caffeine:caffeine'
   implementation 'software.amazon.awssdk:auth'
   implementation 'software.amazon.awssdk:kms'
   implementation 'com.google.cloud:google-cloud-secretmanager'
@@ -48,6 +49,7 @@ dependencies {
   runtimeOnly 'tech.pegasys:jblst'
 
   // Test dependencies
+  testImplementation 'de.neuland-bfi:assertj-logging-log4j'
   testImplementation 'org.assertj:assertj-core'
   testImplementation 'org.mockito:mockito-junit-jupiter'
   testImplementation(testFixtures(project(":keystorage")))
@@ -71,4 +73,5 @@ dependencies {
   testFixturesImplementation 'com.google.cloud:google-cloud-secretmanager'
   testFixturesImplementation project(":common")
   testFixturesImplementation project(":bls-keystore")
+  testFixturesImplementation project(":keystorage")
 }

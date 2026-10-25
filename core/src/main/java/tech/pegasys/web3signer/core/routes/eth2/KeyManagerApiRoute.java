@@ -21,8 +21,7 @@ import tech.pegasys.web3signer.core.service.http.handlers.keymanager.delete.Dele
 import tech.pegasys.web3signer.core.service.http.handlers.keymanager.imports.ImportKeystoresHandler;
 import tech.pegasys.web3signer.core.service.http.handlers.keymanager.list.ListKeystoresHandler;
 import tech.pegasys.web3signer.signing.ArtifactSignerProvider;
-import tech.pegasys.web3signer.signing.FileValidatorManager;
-import tech.pegasys.web3signer.signing.InMemoryValidatorManager;
+import tech.pegasys.web3signer.signing.DefaultValidatorManager;
 import tech.pegasys.web3signer.signing.KeystoreFileManager;
 import tech.pegasys.web3signer.signing.ValidatorManager;
 import tech.pegasys.web3signer.signing.config.metadata.parser.YamlMapperFactory;
@@ -35,7 +34,6 @@ import java.util.Optional;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.vertx.core.http.HttpMethod;
-import io.vertx.ext.web.impl.BlockingHandlerDecorator;
 
 public class KeyManagerApiRoute implements Web3SignerRoute {
   public static final String KEYSTORES_PATH = "/eth/v1/keystores";
@@ -80,10 +78,7 @@ public class KeyManagerApiRoute implements Web3SignerRoute {
     context
         .getRouter()
         .route(HttpMethod.GET, KEYSTORES_PATH)
-        .handler(
-            new BlockingHandlerDecorator(
-                new ListKeystoresHandler(blsSignerProvider, objectMapper), false))
-        .failureHandler(context.getErrorHandler());
+        .blockingHandler(new ListKeystoresHandler(blsSignerProvider, objectMapper), false);
   }
 
   private void registerPost(ValidatorManager validatorManager) {
@@ -97,36 +92,32 @@ public class KeyManagerApiRoute implements Web3SignerRoute {
                 slashingProtection,
                 blsSignerProvider,
                 validatorManager),
-            false)
-        .failureHandler(context.getErrorHandler());
+            false);
   }
 
   private void registerDelete(ValidatorManager validatorManager) {
     context
         .getRouter()
         .route(HttpMethod.DELETE, KEYSTORES_PATH)
-        .handler(
-            new BlockingHandlerDecorator(
-                new DeleteKeystoresHandler(
-                    objectMapper, slashingProtection, blsSignerProvider, validatorManager),
-                false))
-        .failureHandler(context.getErrorHandler());
+        .blockingHandler(
+            new DeleteKeystoresHandler(
+                objectMapper, slashingProtection, blsSignerProvider, validatorManager),
+            false);
   }
 
   private ValidatorManager createValidatorManager() {
     final ValidatorManager baseValidatorManager;
-
+    final Optional<KeystoreFileManager> keystoreFileManager;
     if (keyManagerApiConfig.skipKeystoreStorage()) {
-      baseValidatorManager = new InMemoryValidatorManager(blsSignerProvider, objectMapper);
+      keystoreFileManager = Optional.empty();
     } else {
-      baseValidatorManager =
-          new FileValidatorManager(
-              blsSignerProvider,
+      keystoreFileManager =
+          Optional.of(
               new KeystoreFileManager(
                   baseConfig.getKeyConfigPath(),
-                  YamlMapperFactory.createYamlMapper(baseConfig.getKeyStoreConfigFileMaxSize())),
-              objectMapper);
+                  YamlMapperFactory.createYamlMapper(baseConfig.getKeyStoreConfigFileMaxSize())));
     }
+    baseValidatorManager = new DefaultValidatorManager(blsSignerProvider, keystoreFileManager);
 
     return slashingProtectionContext
         .map(

@@ -23,7 +23,7 @@ import tech.pegasys.web3signer.core.config.TlsOptions;
 import tech.pegasys.web3signer.core.metrics.vertx.VertxMetricsAdapterFactory;
 import tech.pegasys.web3signer.core.service.http.AzureAppClientPublicKeyAllowListHandler;
 import tech.pegasys.web3signer.core.service.http.HostAllowListHandler;
-import tech.pegasys.web3signer.core.service.http.handlers.LogErrorHandler;
+import tech.pegasys.web3signer.core.service.http.handlers.JsonErrorHandler;
 import tech.pegasys.web3signer.core.service.http.handlers.UpcheckHandler;
 import tech.pegasys.web3signer.core.util.FileUtil;
 import tech.pegasys.web3signer.signing.ArtifactSignerProvider;
@@ -38,17 +38,20 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.StringJoiner;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.VertxOptions;
+import io.vertx.core.WorkerExecutor;
 import io.vertx.core.http.ClientAuth;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServer;
@@ -56,16 +59,15 @@ import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.metrics.MetricsOptions;
 import io.vertx.core.net.PfxOptions;
-import io.vertx.ext.healthchecks.HealthCheckHandler;
 import io.vertx.ext.healthchecks.Status;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.handler.BodyHandler;
 import io.vertx.ext.web.handler.CorsHandler;
 import io.vertx.ext.web.handler.LoggerFormat;
 import io.vertx.ext.web.handler.LoggerHandler;
+import io.vertx.ext.web.healthchecks.HealthCheckHandler;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.core.config.Configurator;
 import org.apache.tuweni.net.tls.VertxTrustOptions;
 import org.hyperledger.besu.metrics.MetricsService;
 import org.hyperledger.besu.metrics.MetricsSystemFactory;
@@ -81,6 +83,16 @@ public abstract class Runner implements Runnable, AutoCloseable {
 
   private static final Logger LOG = LogManager.getLogger();
 
+  /**
+   * Status codes left to Vert.x's default no-match handling instead of {@link JsonErrorHandler}:
+   * Vert.x only emits the RFC 9110 {@code Allow} (405) / {@code Accept} (415) headers when no error
+   * handler is registered for that code. {@code Router.uncaughtErrorHandler} is not used: it is
+   * also picked for 405/415 (suppressing those headers), the allowed methods / content types are
+   * not exposed by {@code RoutingContext} to rebuild them, and its contract forbids {@code
+   * ctx.next()}.
+   */
+  private static final Set<Integer> VERTX_DEFAULT_ERROR_STATUS_CODES = Set.of(405, 415);
+
   protected final BaseConfig baseConfig;
 
   private HealthCheckHandler healthCheckHandler;
@@ -92,11 +104,6 @@ public abstract class Runner implements Runnable, AutoCloseable {
 
   @Override
   public void run() {
-    if (baseConfig.getLogLevel() != null) {
-      System.out.println("Setting logging level to " + baseConfig.getLogLevel().name());
-      Configurator.setRootLevel(baseConfig.getLogLevel());
-    }
-
     final MetricsConfiguration metricsConfiguration = createMetricsConfiguration();
     final MetricsSystem metricsSystem = MetricsSystemFactory.create(metricsConfiguration);
     Optional<MetricsService> metricsService = Optional.empty();
@@ -108,13 +115,13 @@ public abstract class Runner implements Runnable, AutoCloseable {
             .build();
     final Router router = Router.router(vertx);
 
-    final LogErrorHandler errorHandler = new LogErrorHandler();
+    registerJsonErrorHandlers(router);
     healthCheckHandler = HealthCheckHandler.create(vertx);
-
-    final List<ArtifactSignerProvider> artifactSignerProviders =
-        Optional.ofNullable(createArtifactSignerProvider(vertx, metricsSystem)).orElse(List.of());
-
     try {
+      final List<ArtifactSignerProvider> artifactSignerProviders =
+          Optional.ofNullable(createArtifactSignerProvider(metricsSystem)).orElse(List.of());
+      artifactSignerProviders.forEach(this::registerClose);
+
       createVersionMetric(metricsSystem);
       metricsService = MetricsService.create(metricsConfiguration, metricsSystem);
       metricsService.ifPresent(MetricsService::start);
@@ -154,17 +161,26 @@ public abstract class Runner implements Runnable, AutoCloseable {
        BodyHandler must be first handler after platform and security handlers
       */
       router.route().handler(BodyHandler.create());
-      registerUpcheckRoute(router, errorHandler);
+      registerUpcheckRoute(router);
 
-      router
-          .route(HttpMethod.GET, HEALTHCHECK_PATH)
-          .handler(healthCheckHandler)
-          .failureHandler(errorHandler);
+      router.route(HttpMethod.GET, HEALTHCHECK_PATH).handler(healthCheckHandler);
 
       registerHealthCheckProcedure(DEFAULT_CHECK, promise -> promise.complete(Status.OK()));
 
+      // Create shared worker executor for reload operations with generous timeout
+      // Pool size of 1 ensures reloads are serialized (only one reload at a time)
+      final WorkerExecutor reloadWorkerExecutor =
+          vertx.createSharedWorkerExecutor(
+              "web3signer-reload-pool",
+              1, // pool size
+              baseConfig.getReloadTimeoutMinutes(), // max execute time
+              TimeUnit.MINUTES); // generous timeout for encrypted keystores and cloud provider
+
+      // Register for cleanup
+      registerClose(reloadWorkerExecutor::close);
+
       final Context context =
-          new Context(router, metricsSystem, errorHandler, vertx, artifactSignerProviders);
+          new Context(router, metricsSystem, vertx, artifactSignerProviders, reloadWorkerExecutor);
 
       populateRouter(context);
 
@@ -181,7 +197,11 @@ public abstract class Runner implements Runnable, AutoCloseable {
 
       closeables.add(() -> shutdownVertx(vertx));
     } catch (final Throwable e) {
-      artifactSignerProviders.forEach(ArtifactSignerProvider::close);
+      try {
+        close(); // Close all registered resources (signerProviders, workerExecutor, etc.)
+      } catch (Exception closeException) {
+        LOG.error("Error during cleanup", closeException);
+      }
       shutdownVertx(vertx);
       metricsService.ifPresent(MetricsService::stop);
       LOG.error("Failed to initialise application", e);
@@ -189,9 +209,20 @@ public abstract class Runner implements Runnable, AutoCloseable {
     }
   }
 
+  /**
+   * Renders every 4xx/5xx routing failure as a JSON error body, except {@link
+   * #VERTX_DEFAULT_ERROR_STATUS_CODES}.
+   */
+  static void registerJsonErrorHandlers(final Router router) {
+    final JsonErrorHandler jsonErrorHandler = new JsonErrorHandler();
+    IntStream.rangeClosed(400, 599)
+        .filter(statusCode -> !VERTX_DEFAULT_ERROR_STATUS_CODES.contains(statusCode))
+        .forEach(statusCode -> router.errorHandler(statusCode, jsonErrorHandler));
+  }
+
   private void shutdownVertx(final Vertx vertx) {
     final CountDownLatch vertxShutdownLatch = new CountDownLatch(1);
-    vertx.close((res) -> vertxShutdownLatch.countDown());
+    vertx.close().onComplete(res -> vertxShutdownLatch.countDown());
     try {
       vertxShutdownLatch.await();
     } catch (InterruptedException e) {
@@ -235,16 +266,12 @@ public abstract class Runner implements Runnable, AutoCloseable {
   }
 
   protected abstract List<ArtifactSignerProvider> createArtifactSignerProvider(
-      final Vertx vertx, final MetricsSystem metricsSystem);
+      final MetricsSystem metricsSystem);
 
   protected abstract void populateRouter(final Context context);
 
-  private void registerUpcheckRoute(final Router router, final LogErrorHandler errorHandler) {
-    router
-        .route(HttpMethod.GET, UPCHECK_PATH)
-        .produces(TEXT_PLAIN)
-        .handler(new UpcheckHandler())
-        .failureHandler(errorHandler);
+  private void registerUpcheckRoute(final Router router) {
+    router.route(HttpMethod.GET, UPCHECK_PATH).produces(TEXT_PLAIN).handler(new UpcheckHandler());
   }
 
   protected void registerHealthCheckProcedure(
@@ -277,7 +304,8 @@ public abstract class Runner implements Runnable, AutoCloseable {
     final CompletableFuture<Void> serverRunningFuture = new CompletableFuture<>();
     httpServer
         .requestHandler(requestHandler)
-        .listen(
+        .listen()
+        .onComplete(
             result -> {
               if (result.succeeded()) {
                 serverRunningFuture.complete(null);

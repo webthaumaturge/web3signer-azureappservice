@@ -1,0 +1,106 @@
+# syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
+
+# Stage 1: Validate and extract the distribution tar.gz
+FROM alpine@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS app-extract
+ARG TAR_FILE
+RUN test -n "$TAR_FILE" || (echo "ERROR: TAR_FILE build argument is required" && exit 1)
+COPY ${TAR_FILE} /tmp/web3signer.tar.gz
+RUN gzip -t /tmp/web3signer.tar.gz || (echo "ERROR: TAR_FILE is not a valid gzip archive" && exit 1) && \
+    mkdir -p /opt/web3signer && \
+    tar -xzf /tmp/web3signer.tar.gz -C /opt/web3signer --strip-components=1 && \
+    rm /tmp/web3signer.tar.gz
+
+# Stage 2: Extract the per-arch libblst.so from jblst-*.jar and then strip it
+# from the jar so the jblst static initializer (supranational.blst.blstJNI)
+# cannot find it as a classpath resource. When the resource is absent, jblst
+# falls through to System.loadLibrary("blst"), which honours the
+# -Djava.library.path set on the runtime ENTRYPOINT. If the resource is left
+# in place, jblst unconditionally copies it into Files.createTempDirectory
+# ("blst@..."), i.e. /tmp — which breaks under `docker run --read-only`.
+# The other shaded natives in the classpath (Netty transports, netty-tcnative,
+# jffi, conscrypt) are not exercised at runtime because Vert.x uses its NIO
+# transport by default.
+FROM ubuntu:26.04@sha256:f144425ff09be612d6d9ad965196e9cdc23dae1f42110a8a11a3e9a8198759f7 AS prep
+ARG TARGETARCH
+RUN apt-get update && apt-get install -y --no-install-recommends unzip zip && rm -rf /var/lib/apt/lists/*
+COPY --from=app-extract /opt/web3signer /opt/web3signer
+RUN set -eu; \
+    case "$TARGETARCH" in \
+      amd64)  BLST_ARCH=amd64 ;; \
+      arm64)  BLST_ARCH=aarch64 ;; \
+      *) echo "Unsupported TARGETARCH=$TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    mkdir -p /opt/web3signer/native-libs; \
+    JBLST_JAR=$(ls /opt/web3signer/lib/jblst-*.jar); \
+    unzip -j "$JBLST_JAR" "supranational/blst/Linux/${BLST_ARCH}/libblst.so" -d /opt/web3signer/native-libs/; \
+    zip -d "$JBLST_JAR" "supranational/blst/Linux/${BLST_ARCH}/libblst.so"
+
+# Stage 3: Runtime on Google Distroless (nonroot by default, no shell, no package manager).
+FROM gcr.io/distroless/java25-debian13:nonroot@sha256:28a3986989d7d74cb5cfd6ba369e64d3d634f83ac9fa562dac8db2d20827f90e
+
+ARG BUILD_DATE
+ARG VCS_REF
+ARG VERSION
+
+LABEL org.opencontainers.image.created=$BUILD_DATE \
+      org.opencontainers.image.title="Web3Signer" \
+      org.opencontainers.image.description="Ethereum 2.0 Signing Service (distroless, read-only-filesystem compatible)" \
+      org.opencontainers.image.url="https://docs.web3signer.consensys.net" \
+      org.opencontainers.image.documentation="https://docs.web3signer.consensys.net" \
+      org.opencontainers.image.source="https://github.com/Consensys-Incorporated/web3signer" \
+      org.opencontainers.image.revision=$VCS_REF \
+      org.opencontainers.image.version=$VERSION \
+      org.opencontainers.image.vendor="Consensys" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.base.name="gcr.io/distroless/java25-debian13:nonroot"
+
+ENV WEB3SIGNER_HTTP_LISTEN_HOST="0.0.0.0" \
+    WEB3SIGNER_METRICS_HOST="0.0.0.0"
+
+COPY --from=prep --chown=nonroot:nonroot /opt/web3signer /opt/web3signer
+
+WORKDIR /opt/web3signer
+
+EXPOSE 9000 9001
+
+# JVM flags below split into two groups:
+#
+# 1. Application flags mirrored from `application { applicationDefaultJvmArgs }`
+#    in build.gradle. The default docker/Dockerfile picks these up automatically
+#    because it runs the gradle-generated bin/web3signer launcher, which bakes
+#    them in. Distroless has no shell so the launcher is not used; we reproduce
+#    the same flags here. Keep them in sync when build.gradle changes.
+#
+# 2. Distroless-only hardening flags (not in the gradle launcher). Needed to
+#    keep startup clean under `docker run --read-only`:
+#      -XX:-UsePerfData             disable JVM hsperfdata_* writes to /tmp
+#      -Dlog4j.skipJansi=true       no TTY; skip Jansi native lib load
+#      -Djava.library.path=...      libblst.so is pre-extracted at build time,
+#      -Djna.library.path=...       so the JVM/JNA do not need to unpack it
+#      -Djna.noclasspath=true       to /tmp at runtime
+#      -Dsupranational.blst.jniResource=/__stripped__
+#                                   Belt-and-braces with the jar-strip in
+#                                   stage 2 (prep). If the native resource is
+#                                   ever reintroduced into jblst-*.jar, this
+#                                   still forces supranational.blst.blstJNI to
+#                                   skip its classpath-extract-to-/tmp branch
+#                                   and fall through to System.loadLibrary.
+ENTRYPOINT [ \
+  "java", \
+  "-XX:-UsePerfData", \
+  "-Dvertx.disableFileCPResolving=true", \
+  "-Dlog4j.shutdownHookEnabled=false", \
+  "-Dlog4j2.formatMsgNoLookups=true", \
+  "-Dlog4j.skipJansi=true", \
+  "-Djava.library.path=/opt/web3signer/native-libs", \
+  "-Djna.library.path=/opt/web3signer/native-libs", \
+  "-Djna.noclasspath=true", \
+  "-Dsupranational.blst.jniResource=/__stripped__", \
+  "-Dio.netty.tryReflectionSetAccessible=true", \
+  "--enable-native-access=ALL-UNNAMED", \
+  "--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED", \
+  "--add-opens=java.base/java.nio=ALL-UNNAMED", \
+  "--add-exports=jdk.crypto.cryptoki/sun.security.pkcs11.wrapper=ALL-UNNAMED", \
+  "-cp", "/opt/web3signer/lib/*", \
+  "tech.pegasys.web3signer.Web3SignerApp" \
+]

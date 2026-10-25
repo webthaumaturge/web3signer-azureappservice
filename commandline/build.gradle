@@ -6,21 +6,24 @@ jar {
       'Specification-Title': archiveBaseName,
       'Specification-Version': project.version,
       'Implementation-Title': archiveBaseName,
-      'Implementation-Version': calculateVersion()
+      'Implementation-Version': buildVersion
       )
   }
 }
 
 dependencies {
+  implementation 'com.google.code.findbugs:jsr305'
 
   implementation project(":common")
   implementation project(":core")
+  implementation project(":keystorage")
   implementation project(":slashing-protection")
   implementation project(":signing")
   implementation 'info.picocli:picocli'
   implementation 'com.google.guava:guava'
   implementation 'org.apache.logging.log4j:log4j-api'
   implementation 'org.apache.logging.log4j:log4j-core'
+  implementation 'org.apache.logging.log4j:log4j-layout-template-json'
   implementation 'org.hyperledger.besu:besu-plugin-api'
   implementation 'org.hyperledger.besu.internal:besu-metrics-core'
   implementation 'com.fasterxml.jackson.core:jackson-databind'
@@ -37,15 +40,15 @@ dependencies {
 
   runtimeOnly 'org.apache.logging.log4j:log4j-slf4j2-impl'
 
-    // JUnit dependencies
-    testImplementation 'org.junit.jupiter:junit-jupiter-api'
-    testImplementation 'org.junit.jupiter:junit-jupiter-params'
-    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+  // JUnit dependencies
+  testImplementation 'org.junit.jupiter:junit-jupiter-api'
+  testImplementation 'org.junit.jupiter:junit-jupiter-params'
+  testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+  testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
-    testImplementation 'org.assertj:assertj-core'
-    testImplementation 'org.mockito:mockito-junit-jupiter'
-    testImplementation 'io.vertx:vertx-web'
+  testImplementation 'org.assertj:assertj-core'
+  testImplementation 'org.mockito:mockito-junit-jupiter'
+  testImplementation 'io.vertx:vertx-web'
 }
 
 artifacts {

@@ -29,6 +29,7 @@ import tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParameters;
 import tech.pegasys.web3signer.commandline.PicoCliAzureKeyVaultParameters;
 import tech.pegasys.web3signer.commandline.PicoCliGcpSecretManagerParameters;
 import tech.pegasys.web3signer.commandline.PicoCliSlashingProtectionParameters;
+import tech.pegasys.web3signer.commandline.VersionProvider;
 import tech.pegasys.web3signer.commandline.config.KeyManagerApiParameters;
 import tech.pegasys.web3signer.commandline.config.PicoCommitBoostApiParameters;
 import tech.pegasys.web3signer.commandline.config.PicoKeystoresParameters;
@@ -61,11 +62,14 @@ import picocli.CommandLine.Spec;
     description = "Handle Ethereum-2 BLS signing operations and public key reporting",
     subcommands = {
       HelpCommand.class,
+      XHelpSubCommand.class,
       Eth2ExportSubCommand.class,
       Eth2ImportSubCommand.class,
       Eth2WatermarkRepairSubCommand.class
     },
-    mixinStandardHelpOptions = true)
+    versionProvider = VersionProvider.class,
+    mixinStandardHelpOptions = true,
+    footer = "Unstable options are omitted from this help. Run 'web3signer eth2 -X' to list them.")
 public class Eth2SubCommand extends ModeSubCommand {
   private static final Logger LOG = LogManager.getLogger();
   public static final String COMMAND_NAME = "eth2";
@@ -145,6 +149,15 @@ public class Eth2SubCommand extends ModeSubCommand {
       arity = "1",
       converter = UInt64Converter.class)
   private UInt64 fuluForkEpoch;
+
+  @CommandLine.Option(
+      names = {"--Xnetwork-gloas-fork-epoch"},
+      hidden = true,
+      paramLabel = "<epoch>",
+      description = "Override the Gloas fork activation epoch.",
+      arity = "1",
+      converter = UInt64Converter.class)
+  private UInt64 gloasForkEpoch;
 
   @CommandLine.Option(
       names = {"--Xtrusted-setup"},
@@ -236,6 +249,9 @@ public class Eth2SubCommand extends ModeSubCommand {
     }
     if (fuluForkEpoch != null) {
       builder.fuluForkEpoch(fuluForkEpoch);
+    }
+    if (gloasForkEpoch != null) {
+      builder.gloasForkEpoch(gloasForkEpoch);
     }
     if (trustedSetup != null) {
       builder.trustedSetup(trustedSetup);

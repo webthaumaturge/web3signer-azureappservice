@@ -16,14 +16,19 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Collections.singletonMap;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.web3j.crypto.Sign.signedMessageToKey;
-import static tech.pegasys.web3signer.tests.bulkloading.AzureKeyVaultAcceptanceTest.getSECPKeysFromAzureVault;
 
 import tech.pegasys.web3signer.AwsKmsUtil;
+import tech.pegasys.web3signer.core.service.jsonrpc.handlers.signing.ConfigurationChainId;
 import tech.pegasys.web3signer.dsl.HashicorpSigningParams;
+import tech.pegasys.web3signer.dsl.azure.AzureKeyVaultEmulator;
+import tech.pegasys.web3signer.dsl.azure.MockAzureAuthorityExtension;
+import tech.pegasys.web3signer.dsl.signer.SignerConfigurationBuilder;
 import tech.pegasys.web3signer.dsl.utils.MetadataFileHelpers;
+import tech.pegasys.web3signer.keystorage.azure.AzureOverrides;
 import tech.pegasys.web3signer.keystore.hashicorp.dsl.HashicorpNode;
 import tech.pegasys.web3signer.signing.KeyType;
 import tech.pegasys.web3signer.signing.secp256k1.EthPublicKeyUtils;
+import tech.pegasys.web3signer.tests.bulkloading.AzureKeyVaultAcceptanceTest;
 
 import java.io.File;
 import java.math.BigInteger;
@@ -39,18 +44,17 @@ import java.util.Optional;
 import com.google.common.collect.Maps;
 import com.google.common.io.Resources;
 import io.restassured.response.Response;
+import io.vertx.core.json.JsonObject;
 import org.apache.tuweni.bytes.Bytes;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariables;
+import org.junit.jupiter.api.extension.RegisterExtension;
+import org.web3j.crypto.Hash;
+import org.web3j.crypto.Sign;
 import org.web3j.crypto.Sign.SignatureData;
 
 public class SecpSigningAcceptanceTest extends SigningAcceptanceTestBase {
-
-  private static final String CLIENT_ID = System.getenv("AZURE_CLIENT_ID");
-  private static final String CLIENT_SECRET = System.getenv("AZURE_CLIENT_SECRET");
-  private static final String KEY_VAULT_NAME = System.getenv("AZURE_KEY_VAULT_NAME");
-  private static final String TENANT_ID = System.getenv("AZURE_TENANT_ID");
 
   private static final Bytes DATA = Bytes.wrap("42".getBytes(UTF_8));
   private static final String PRIVATE_KEY =
@@ -60,8 +64,56 @@ public class SecpSigningAcceptanceTest extends SigningAcceptanceTestBase {
 
   private static final MetadataFileHelpers METADATA_FILE_HELPERS = new MetadataFileHelpers();
 
+  @RegisterExtension
+  static final MockAzureAuthorityExtension MOCK_AUTHORITY = new MockAzureAuthorityExtension();
+
   @Test
   public void signDataWithFileBasedKey() throws URISyntaxException {
+    createFileBasedKeyStore();
+
+    signAndVerifySignature();
+  }
+
+  @Test
+  public void signDigestWithFileBasedKeyWithoutHashing() throws URISyntaxException {
+    createFileBasedKeyStore();
+    setupEth1Signer();
+
+    final Bytes digest = Bytes.wrap(Hash.sha3(DATA.toArray()));
+    final Response response = signer.eth1Sign(PUBLIC_KEY_HEX_STRING, digest, false);
+    final Bytes signature = verifyAndGetSignatureResponse(response);
+    verifyDigestSignature(signature, digest, PUBLIC_KEY_HEX_STRING);
+  }
+
+  @Test
+  public void rejectNonDigestWhenHashingIsDisabled() throws URISyntaxException {
+    createFileBasedKeyStore();
+    setupEth1Signer();
+
+    assertThat(signer.eth1Sign(PUBLIC_KEY_HEX_STRING, DATA, false).statusCode()).isEqualTo(400);
+  }
+
+  @Test
+  public void rejectNonBooleanApplyHash() throws URISyntaxException {
+    createFileBasedKeyStore();
+    setupEth1Signer();
+
+    final JsonObject requestBody =
+        new JsonObject().put("data", DATA.toHexString()).put("applyHash", "false");
+    assertThat(signer.eth1Sign(PUBLIC_KEY_HEX_STRING, requestBody).statusCode()).isEqualTo(400);
+  }
+
+  @Test
+  public void rejectNullApplyHash() throws URISyntaxException {
+    createFileBasedKeyStore();
+    setupEth1Signer();
+
+    final JsonObject requestBody =
+        new JsonObject().put("data", DATA.toHexString()).putNull("applyHash");
+    assertThat(signer.eth1Sign(PUBLIC_KEY_HEX_STRING, requestBody).statusCode()).isEqualTo(400);
+  }
+
+  private void createFileBasedKeyStore() throws URISyntaxException {
     final String keyPath =
         new File(Resources.getResource("secp256k1/wallet.json").toURI()).getAbsolutePath();
 
@@ -70,8 +122,6 @@ public class SecpSigningAcceptanceTest extends SigningAcceptanceTestBase {
         Path.of(keyPath),
         "pass",
         KeyType.SECP256K1);
-
-    signAndVerifySignature();
   }
 
   @Test
@@ -97,24 +147,43 @@ public class SecpSigningAcceptanceTest extends SigningAcceptanceTestBase {
   }
 
   @Test
-  @EnabledIfEnvironmentVariables({
-    @EnabledIfEnvironmentVariable(named = "AZURE_CLIENT_ID", matches = ".+"),
-    @EnabledIfEnvironmentVariable(named = "AZURE_CLIENT_SECRET", matches = ".+"),
-    @EnabledIfEnvironmentVariable(named = "AZURE_KEY_VAULT_NAME", matches = ".+"),
-    @EnabledIfEnvironmentVariable(named = "AZURE_TENANT_ID", matches = ".+")
-  })
   public void signDataWithKeyInAzure() {
-    final var azureKey = getSECPKeysFromAzureVault().stream().findAny().orElseThrow();
+    final AzureKeyVaultEmulator emulator = AzureKeyVaultEmulator.getInstance();
+    final AzureOverrides azureOverrides =
+        new AzureOverrides(
+            Optional.of(URI.create(emulator.getVaultUrl())),
+            Optional.of(URI.create(MOCK_AUTHORITY.getAuthorityHostUrl())),
+            Optional.of(emulator.getTrustCertificatePath()));
+    final var azureKey =
+        AzureKeyVaultAcceptanceTest.getSECPKeysFromEmulator(azureOverrides).stream()
+            .findAny()
+            .orElseThrow();
 
     METADATA_FILE_HELPERS.createAzureKeyYamlFileAt(
         testDirectory.resolve("azure_key.yaml"),
-        CLIENT_ID,
-        CLIENT_SECRET,
-        KEY_VAULT_NAME,
-        TENANT_ID,
-        azureKey.name());
+        "unused",
+        "unused",
+        "unused",
+        AzureKeyVaultEmulator.TENANT_ID,
+        azureKey.name(),
+        azureOverrides);
 
-    signAndVerifySignature(azureKey.publicKeyHex());
+    final SignerConfigurationBuilder builder =
+        new SignerConfigurationBuilder()
+            .withKeyStoreDirectory(testDirectory)
+            .withMode("eth1")
+            .withChainIdProvider(new ConfigurationChainId(DEFAULT_CHAIN_ID))
+            .withOverriddenCA(emulator.getTlsCertificateDefinition());
+    startSigner(builder.build());
+
+    final Response response = signer.eth1Sign(azureKey.publicKeyHex(), DATA);
+    final Bytes signature = verifyAndGetSignatureResponse(response);
+    verifySignature(signature, azureKey.publicKeyHex());
+
+    final Bytes digest = Bytes.wrap(Hash.sha3(DATA.toArray()));
+    final Response digestResponse = signer.eth1Sign(azureKey.publicKeyHex(), digest, false);
+    verifyDigestSignature(
+        verifyAndGetSignatureResponse(digestResponse), digest, azureKey.publicKeyHex());
   }
 
   @Test
@@ -168,8 +237,12 @@ public class SecpSigningAcceptanceTest extends SigningAcceptanceTestBase {
           awsEndpointOverride,
           awsKeyId);
 
-      signAndVerifySignature(EthPublicKeyUtils.toHexString(ecPublicKey));
+      final String publicKeyHex = EthPublicKeyUtils.toHexString(ecPublicKey);
+      signAndVerifySignature(publicKeyHex);
 
+      final Bytes digest = Bytes.wrap(Hash.sha3(DATA.toArray()));
+      final Response digestResponse = signer.eth1Sign(publicKeyHex, digest, false);
+      verifyDigestSignature(verifyAndGetSignatureResponse(digestResponse), digest, publicKeyHex);
     } finally {
       awsKmsUtil.deleteKey(awsKeyId);
     }
@@ -198,6 +271,23 @@ public class SecpSigningAcceptanceTest extends SigningAcceptanceTestBase {
     final BigInteger messagePublicKey = recoverPublicKey(new SignatureData(v, r, s));
     assertThat(EthPublicKeyUtils.web3JPublicKeyToECPublicKey(messagePublicKey))
         .isEqualTo(expectedPublicKey);
+  }
+
+  void verifyDigestSignature(final Bytes signature, final Bytes digest, final String publicKeyHex) {
+    final ECPublicKey expectedPublicKey =
+        EthPublicKeyUtils.bytesToECPublicKey(Bytes.fromHexString(publicKeyHex));
+
+    final byte[] r = signature.slice(0, 32).toArray();
+    final byte[] s = signature.slice(32, 32).toArray();
+    final byte[] v = signature.slice(64).toArray();
+    try {
+      final BigInteger messagePublicKey =
+          Sign.signedMessageHashToKey(digest.toArray(), new SignatureData(v, r, s));
+      assertThat(EthPublicKeyUtils.web3JPublicKeyToECPublicKey(messagePublicKey))
+          .isEqualTo(expectedPublicKey);
+    } catch (final SignatureException e) {
+      throw new IllegalStateException("signature cannot be recovered", e);
+    }
   }
 
   private BigInteger recoverPublicKey(final SignatureData signature) {

@@ -19,7 +19,7 @@ jar {
       'Specification-Title': archiveBaseName,
       'Specification-Version': project.version,
       'Implementation-Title': archiveBaseName,
-      'Implementation-Version': calculateVersion()
+      'Implementation-Version': buildVersion
       )
   }
 }
@@ -34,4 +34,5 @@ dependencies {
 
   runtimeOnly 'org.apache.logging.log4j:log4j-core'
   runtimeOnly 'org.apache.logging.log4j:log4j-slf4j2-impl'
+  runtimeOnly 'org.apache.logging.log4j:log4j-layout-template-json'
 }

@@ -12,18 +12,17 @@
  */
 package tech.pegasys.web3signer.core.config;
 
+import tech.pegasys.web3signer.common.config.SignerLoaderConfig;
+
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-import org.apache.logging.log4j.Level;
 import org.hyperledger.besu.plugin.services.metrics.MetricCategory;
 
 public interface BaseConfig {
-
-  Level getLogLevel();
 
   String getHttpListenHost();
 
@@ -61,7 +60,9 @@ public interface BaseConfig {
 
   Boolean isAccessLogsEnabled();
 
-  boolean keystoreParallelProcessingEnabled();
-
   int getVertxWorkerPoolSize();
+
+  SignerLoaderConfig getSignerLoaderConfig();
+
+  long getReloadTimeoutMinutes();
 }

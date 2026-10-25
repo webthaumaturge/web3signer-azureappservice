@@ -10,6 +10,13 @@ on:
     branches:
       - master
 
+# A re-pushed tag cancels the run still in progress for the tag's previous commit, so the older build
+# cannot overwrite the Docker images or draft release of the newer one. Branch and pull request runs
+# get a group of their own and never cancel each other.
+concurrency:
+  group: ${{ startsWith(github.ref, 'refs/tags/') && format('{0}-{1}', github.workflow, github.ref) || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   build:
     # 4 cpu, 16G ram
@@ -22,7 +29,7 @@ jobs:
       publish-version: ${{ steps.project-version.outputs.publish-version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: 'recursive'
           fetch-depth: 0
@@ -30,21 +37,38 @@ jobs:
 
       - name: Setup Java and Gradle
         id: setup-java-gradle
-        uses: ConsenSys/github-actions/java-setup-gradle@main
+        uses: Consensys-Incorporated/github-actions/java-setup-gradle@89c262a30cae735be99dc776f9556b796fb456ca  # main
+        with:
+          VERSION: '25'
 
       - name: Determine Web3Signer version
         id: project-version
-        uses: ConsenSys/github-actions/java-get-project-version@main
+        uses: Consensys-Incorporated/github-actions/java-get-project-version@89c262a30cae735be99dc776f9556b796fb456ca  # main
 
-      - name: Start LocalStack (AWS)
-        id: localstack
-        uses: LocalStack/setup-localstack@v0.2.4
-        with:
-          image-tag: 'latest'
-          configuration: LOCALSTACK_DEBUG=1
+      - name: Validate release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          PUBLISH_VERSION: ${{ steps.project-version.outputs.publish-version }}
+        run: |
+          # git describe picks one tag when several point at this commit (for example an RC and its final
+          # release), and none once the tag has moved to another commit. Stop before anything is published
+          # under a version other than the pushed tag.
+          if [ "$PUBLISH_VERSION" != "$TAG" ]; then
+            echo "::error::Tag $TAG builds as version $PUBLISH_VERSION."
+            exit 1
+          fi
+          # A published release is never rebuilt: its binaries and Docker images are already in use.
+          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)" = false ]; then
+            echo "::error::Release $TAG is already published; release a new version instead."
+            exit 1
+          fi
 
+      # v3
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2.1.8
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         if: (github.ref == 'refs/heads/master' && github.event_name != 'pull_request') || startsWith(github.ref, 'refs/tags/')
         with:
           credentials_json: ${{ secrets.GCP_CREDENTIALS_JSON }}
@@ -54,19 +78,6 @@ jobs:
         id: build-test
         uses: ./.github/actions/build-test
         env:
-          AWS_REGION: 'us-east-2'
-          AWS_ACCESS_KEY_ID: 'test'
-          AWS_SECRET_ACCESS_KEY: 'test'
-          RW_AWS_ACCESS_KEY_ID: 'test'
-          RW_AWS_SECRET_ACCESS_KEY: 'test'
-          AWS_ACCESS_KEY_ID_TEST2: 'test2'
-          AWS_SECRET_ACCESS_KEY_TEST2: 'test2'
-          AWS_ENDPOINT_OVERRIDE: 'http://127.0.0.1:4566'
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_INVALID_KEY_VAULT_NAME: ${{ secrets.AZURE_INVALID_KEY_VAULT_NAME }}
-          AZURE_KEY_VAULT_NAME: ${{ secrets.AZURE_KEY_VAULT_NAME }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         with:
           disable-test: 'false'
@@ -75,137 +86,284 @@ jobs:
         run: ./gradlew distTar distZip
 
       - name: Upload distribution artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: distribution
           path: build/distributions/
           retention-days: 1
           if-no-files-found: error
 
-  docker:
-    runs-on: ubuntu-24.04
+  docker-build:
+    name: docker-build (${{ matrix.variant }}, ${{ matrix.platform.arch }})
     needs: build
     environment: docker
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [default, distroless]
+        platform:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.platform.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
+      # v4.4.1
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: distribution
           path: build/distributions/
 
       - name: Docker Metadata
         id: docker-metadata
+        env:
+          VARIANT: ${{ matrix.variant }}
+          PUBLISH_VERSION: ${{ needs.build.outputs.publish-version }}
         run: |
-          # Calculate Docker Tags
-          TAGS="consensys/web3signer:${{ needs.build.outputs.publish-version }}"
-          if [ "${{ needs.build.outputs.publish-version }}" != "develop" ]; then
-            TAGS="$TAGS,consensys/web3signer:latest"
-          fi
-          echo "tags=$TAGS" >> $GITHUB_OUTPUT
-          
-          # Determine Push Flag
-          if [ "${{ github.event_name }}" == "pull_request" ] || [ "${{ github.event_name }}" == "schedule" ]; then
-            echo "push=false" >> $GITHUB_OUTPUT
+          # Resolve variant-specific settings
+          if [ "$VARIANT" = "distroless" ]; then
+            DOCKERFILE="docker/Dockerfile.distroless"
+            SUFFIX="-distroless"
           else
-            echo "push=true" >> $GITHUB_OUTPUT
+            DOCKERFILE="docker/Dockerfile"
+            SUFFIX=""
           fi
-          
+          echo "dockerfile=$DOCKERFILE" >> $GITHUB_OUTPUT
+          echo "tag-suffix=$SUFFIX" >> $GITHUB_OUTPUT
+          echo "image-name=consensys/web3signer" >> $GITHUB_OUTPUT
+          echo "test-tag=consensys/web3signer:test${SUFFIX}" >> $GITHUB_OUTPUT
+
+          # Push only on push to master or annotated tags. The workflow `on:`
+          # filter already blocks side-branch pushes, but making the gate
+          # explicit here is belt-and-braces against future trigger changes.
+          if [ "${{ github.event_name }}" = "push" ] \
+             && { [ "${{ github.ref }}" = "refs/heads/master" ] || [[ "${{ github.ref }}" == refs/tags/* ]]; }; then
+            echo "push=true" >> $GITHUB_OUTPUT
+          else
+            echo "push=false" >> $GITHUB_OUTPUT
+          fi
+
           # Set Build Args
-          echo "build-date=$(date --utc --rfc-3339=seconds)" >> $GITHUB_OUTPUT
+          echo "build-date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
           echo "vcs-ref=${{ github.sha }}" >> $GITHUB_OUTPUT
 
-      - name: Build and export to docker
-        uses: docker/build-push-action@v6
+      # v7.4.0
+      - name: Build and export to docker (smoke-test image)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         env:
           DOCKER_BUILD_SUMMARY: false
         with:
-          file: docker/Dockerfile
+          file: ${{ steps.docker-metadata.outputs.dockerfile }}
           context: .
+          platforms: linux/${{ matrix.platform.arch }}
           build-args: |
             TAR_FILE=./build/distributions/web3signer-${{ needs.build.outputs.publish-version }}.tar.gz
             BUILD_DATE=${{ steps.docker-metadata.outputs.build-date }}
             VCS_REF=${{ steps.docker-metadata.outputs.vcs-ref }}
             VERSION=${{ needs.build.outputs.publish-version }}
-          no-cache: true
+          cache-from: type=gha,scope=${{ matrix.variant }}-${{ matrix.platform.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}-${{ matrix.platform.arch }}
           load: true
           pull: true
-          tags: consensys/web3signer:test
+          tags: ${{ steps.docker-metadata.outputs.test-tag }}
 
       - name: Get absolute path of reports directory
         id: get-reports-dir
         run: echo "path=$(realpath ./build/reports)" >> $GITHUB_OUTPUT
 
-      - name: Run Docker tests
-        run: ./docker/test.sh 'consensys/web3signer:test' '${{ steps.get-reports-dir.outputs.path }}'
+      - name: Run Docker tests (default variant)
+        if: matrix.variant == 'default'
+        run: ./docker/test.sh '${{ steps.docker-metadata.outputs.test-tag }}' '${{ steps.get-reports-dir.outputs.path }}'
+
+      - name: Run Docker smoke test (distroless variant)
+        if: matrix.variant == 'distroless'
+        run: ./docker/test-distroless.sh '${{ steps.docker-metadata.outputs.test-tag }}' '${{ steps.get-reports-dir.outputs.path }}'
 
       - name: Test Summary
         if: always()
+        env:
+          VARIANT: ${{ matrix.variant }}
+          ARCH: ${{ matrix.platform.arch }}
         run: |
-          SUMMARY_CONTENT="<h2>Docker Test Summary</h2>\n"
+          if [ "$VARIANT" = "distroless" ]; then
+            REPORT_FILE="./build/reports/smoke-report.txt"
+          else
+            REPORT_FILE="./build/reports/goss-report.txt"
+          fi
+          SUMMARY_CONTENT="<h2>Docker Test Summary (${VARIANT} / linux-${ARCH})</h2>\n"
           SUMMARY_CONTENT+="<details><summary><strong>Details</strong></summary>\n"
           SUMMARY_CONTENT+="<pre><code>\n"
-          SUMMARY_CONTENT+=$(cat ./build/reports/goss-report.txt)
+          if [ -f "$REPORT_FILE" ]; then
+            SUMMARY_CONTENT+=$(cat "$REPORT_FILE")
+          else
+            SUMMARY_CONTENT+="(no report produced)"
+          fi
           SUMMARY_CONTENT+="\n</code></pre></details>\n"
-          echo -e "$SUMMARY_CONTENT" >> $GITHUB_STEP_SUMMARY  
+          echo -e "$SUMMARY_CONTENT" >> $GITHUB_STEP_SUMMARY
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.29.0
-        with:
-          image-ref: 'consensys/web3signer:test'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
-
+      # v4.6.0
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
         if: steps.docker-metadata.outputs.push == 'true'
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push to registry
-        uses: docker/build-push-action@v6
+      # v7.4.0
+      - name: Build and push by digest
+        id: push
+        if: steps.docker-metadata.outputs.push == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
-          platforms: linux/amd64,linux/arm64
-          file: docker/Dockerfile
+          file: ${{ steps.docker-metadata.outputs.dockerfile }}
           context: .
+          platforms: linux/${{ matrix.platform.arch }}
           build-args: |
             TAR_FILE=./build/distributions/web3signer-${{ needs.build.outputs.publish-version }}.tar.gz
             BUILD_DATE=${{ steps.docker-metadata.outputs.build-date }}
             VCS_REF=${{ steps.docker-metadata.outputs.vcs-ref }}
             VERSION=${{ needs.build.outputs.publish-version }}
-          push: ${{ steps.docker-metadata.outputs.push }}
-          no-cache: true
-          pull: true
-          tags: ${{ steps.docker-metadata.outputs.tags }}
+          cache-from: type=gha,scope=${{ matrix.variant }}-${{ matrix.platform.arch }}
+          provenance: mode=max
+          sbom: true
+          outputs: type=image,name=${{ steps.docker-metadata.outputs.image-name }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        if: steps.docker-metadata.outputs.push == 'true'
+        run: |
+          mkdir -p "${{ runner.temp }}/digests/${{ matrix.variant }}"
+          digest="${{ steps.push.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${{ matrix.variant }}/${digest#sha256:}"
+
+      - name: Upload digest
+        if: steps.docker-metadata.outputs.push == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: digests-${{ matrix.variant }}-${{ matrix.platform.arch }}
+          path: ${{ runner.temp }}/digests/${{ matrix.variant }}/*
+          if-no-files-found: error
+          retention-days: 1
+
+  docker-merge:
+    name: docker-merge (${{ matrix.variant }})
+    needs: [build, docker-build]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/'))
+    environment: docker
+    permissions:
+      contents: read
+      id-token: write   # keyless cosign via GitHub OIDC
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [default, distroless]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Docker Metadata
+        id: docker-metadata
+        env:
+          VARIANT: ${{ matrix.variant }}
+          PUBLISH_VERSION: ${{ needs.build.outputs.publish-version }}
+        run: |
+          if [ "$VARIANT" = "distroless" ]; then
+            SUFFIX="-distroless"
+          else
+            SUFFIX=""
+          fi
+          IMAGE_NAME="consensys/web3signer"
+          echo "image-name=$IMAGE_NAME" >> $GITHUB_OUTPUT
+          echo "tag-suffix=$SUFFIX" >> $GITHUB_OUTPUT
+
+          PRIMARY_TAG="${IMAGE_NAME}:${PUBLISH_VERSION}${SUFFIX}"
+          TAGS="$PRIMARY_TAG"
+          # `latest` follows final releases only: not master builds (develop) or release candidates,
+          # matching the pre-release rule of the release job
+          if [ "$PUBLISH_VERSION" != "develop" ] && [[ "$PUBLISH_VERSION" != *-RC* ]]; then
+            TAGS="$TAGS,${IMAGE_NAME}:latest${SUFFIX}"
+          fi
+          echo "primary-tag=$PRIMARY_TAG" >> $GITHUB_OUTPUT
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
+      - name: Download per-arch digests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: digests-${{ matrix.variant }}-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+
+      # v4.6.0
+      - name: Login to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # v4.4.1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+
+      - name: Create manifest list
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          IMAGE_NAME: ${{ steps.docker-metadata.outputs.image-name }}
+          TAGS: ${{ steps.docker-metadata.outputs.tags }}
+        run: |
+          TAG_ARGS=""
+          IFS=',' read -ra TAG_ARR <<< "$TAGS"
+          for t in "${TAG_ARR[@]}"; do TAG_ARGS+=" -t $t"; done
+          # shellcheck disable=SC2046
+          docker buildx imagetools create $TAG_ARGS \
+            $(printf "${IMAGE_NAME}@sha256:%s " *)
+
+      - name: Inspect manifest
+        env:
+          PRIMARY_TAG: ${{ steps.docker-metadata.outputs.primary-tag }}
+        run: docker buildx imagetools inspect "$PRIMARY_TAG"
+
+      - name: Capture manifest-list digest
+        id: manifest
+        env:
+          PRIMARY_TAG: ${{ steps.docker-metadata.outputs.primary-tag }}
+        run: |
+          DIGEST=$(docker buildx imagetools inspect "$PRIMARY_TAG" --format '{{json .Manifest.Digest}}' | jq -r .)
+          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign manifest with keyless cosign (Sigstore OIDC)
+        env:
+          IMAGE_NAME: ${{ steps.docker-metadata.outputs.image-name }}
+          DIGEST: ${{ steps.manifest.outputs.digest }}
+        run: cosign sign --yes "${IMAGE_NAME}@${DIGEST}"
 
   release:
     runs-on: ubuntu-24.04
-    needs: [build, docker]
+    needs: [build, docker-merge]
     if: startsWith(github.ref, 'refs/tags/')
     environment: release
     permissions:
         contents: write
+        id-token: write      # sign the build provenance through GitHub OIDC
+        attestations: write  # store the build provenance attestation
+    env:
+      TAG: ${{ github.ref_name }}
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: distribution
           path: build/distributions/
@@ -213,32 +371,121 @@ jobs:
       - name: Generate Checksum
         working-directory: ./build/distributions
         run: |
-          shasum -a 256 "web3signer-${{ needs.build.outputs.publish-version }}.tar.gz" > "web3signer-${{ needs.build.outputs.publish-version }}.tar.gz.sha256"
-          shasum -a 256 "web3signer-${{ needs.build.outputs.publish-version }}.zip" > "web3signer-${{ needs.build.outputs.publish-version }}.zip.sha256"
+          shasum -a 256 "web3signer-${TAG}.tar.gz" > "web3signer-${TAG}.tar.gz.sha256"
+          shasum -a 256 "web3signer-${TAG}.zip" > "web3signer-${TAG}.zip.sha256"
 
-      - name: Determine Prerelease
-        id: determine-prerelease
+      # Signed SLSA build provenance for the binaries, checked by
+      # `gh attestation verify <file> --repo Consensys-Incorporated/web3signer`
+      - name: Attest Build Provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            build/distributions/web3signer-${{ env.TAG }}.tar.gz
+            build/distributions/web3signer-${{ env.TAG }}.zip
+
+      - name: Write Release Notes
         run: |
-          if [[ "${{ needs.build.outputs.publish-version }}" == *-RC* ]]; then
-            echo "prerelease=true" >> $GITHUB_OUTPUT
-          else
-            echo "prerelease=false" >> $GITHUB_OUTPUT
+          # Release notes: everything between the first and second "## " headings of CHANGELOG.md
+          CHANGELOG=$(awk '
+            /^## / {
+              if (count == 0) {
+                count++
+                next
+              }
+              if (count == 1) {
+                exit
+              }
+            }
+            count == 1 {print}
+          ' CHANGELOG.md)
+
+          # Previous release for the compare link: the second "## " heading of CHANGELOG.md, else the
+          # previous tag, else the first commit
+          PREVIOUS_TAG=$(awk '
+            /^## / {
+              count++
+              if (count == 2) {
+                gsub(/^## /, "")
+                gsub(/[[:space:]]*$/, "")
+                print
+                exit
+              }
+            }
+          ' CHANGELOG.md)
+          if [ -z "$PREVIOUS_TAG" ]; then
+            PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -A1 "^${TAG}$" | tail -n1)
+            if [ -z "$PREVIOUS_TAG" ] || [ "$PREVIOUS_TAG" == "$TAG" ]; then
+              PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD)
+            fi
           fi
 
-      # Create release tag and attach the distribution
-      - name: Web3Signer Release
-        id: release
-        uses: softprops/action-gh-release@v2.2.1
-        with:
-          files: |
-            build/distributions/web3signer-${{ needs.build.outputs.publish-version }}.tar.gz
-            build/distributions/web3signer-${{ needs.build.outputs.publish-version }}.tar.gz.sha256
-            build/distributions/web3signer-${{ needs.build.outputs.publish-version }}.zip
-            build/distributions/web3signer-${{ needs.build.outputs.publish-version }}.zip.sha256
+          REPO_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+          {
+            echo "$CHANGELOG"
+            echo ""
+            echo "## Downloads"
+            echo "### Binaries"
+            echo "|      Binary     |                       Checksum                      |"
+            echo "|:-----------------:|:----------------------------------------------------------------:|"
+            echo "| [web3signer.tar.gz](${REPO_URL}/releases/download/${TAG}/web3signer-${TAG}.tar.gz) | [Checksum](${REPO_URL}/releases/download/${TAG}/web3signer-${TAG}.tar.gz.sha256)|"
+            echo "| [web3signer.zip](${REPO_URL}/releases/download/${TAG}/web3signer-${TAG}.zip)    | [Checksum](${REPO_URL}/releases/download/${TAG}/web3signer-${TAG}.zip.sha256) |"
+            echo ""
+            echo "### Docker"
+            echo "Default image (Ubuntu + Eclipse Temurin JRE 25):"
+            echo "\`docker pull consensys/web3signer:${TAG}\`"
+            echo ""
+            echo "Hardened image (Google Distroless, read-only-filesystem compatible):"
+            echo "\`docker pull consensys/web3signer:${TAG}-distroless\`"
+            echo ""
+            echo "### Verify"
+            echo "Binaries, with the [GitHub CLI](https://cli.github.com/):"
+            echo '```sh'
+            echo "# the file is the one published with this release"
+            echo "gh release verify-asset ${TAG} web3signer-${TAG}.tar.gz --repo ${GITHUB_REPOSITORY}"
+            echo "# the file was built by this repository's CI workflow"
+            echo "gh attestation verify web3signer-${TAG}.tar.gz --repo ${GITHUB_REPOSITORY}"
+            echo '```'
+            echo ""
+            echo "Docker images: see [Verifying image signatures and attestations](${REPO_URL}/blob/${TAG}/docker/README.md#verifying-image-signatures-and-attestations)."
+            echo ""
+            echo "---"
+            echo "**Full Changelog**: ${REPO_URL}/compare/${PREVIOUS_TAG}...${TAG}"
+          } > "$RUNNER_TEMP/release-notes.md"
 
-          tag_name: ${{ needs.build.outputs.publish-version }}
-          body: |
-            ** Web3Signer Release **
-          draft: true
-          prerelease: ${{ steps.determine-prerelease.outputs.prerelease }}
-          preserve_order: true
+      # One draft release per tag, which a maintainer reviews and publishes (see release-process.md):
+      # - no release yet: create the draft;
+      # - a draft left over from an earlier push of this tag (first attempt of this run): refresh it;
+      # - a re-run of this run: keep the draft's notes, which may have been edited during review;
+      # - published: fail. A published release is never changed; release a new version instead.
+      # Every case that reaches the upload replaces the four files.
+      - name: Web3Signer Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [[ "$TAG" == *-RC* ]]; then
+            RELEASE_TYPE=(--prerelease=true --latest=false)
+          else
+            RELEASE_TYPE=(--prerelease=false --latest=true)
+          fi
+          # --target records this commit: if the tag is deleted and the draft published anyway, GitHub
+          # recreates the tag here instead of on the default branch.
+          RELEASE_ARGS=(--title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md" --target "$GITHUB_SHA" "${RELEASE_TYPE[@]}")
+
+          if ! IS_DRAFT=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null); then
+            gh release create "$TAG" --draft --verify-tag "${RELEASE_ARGS[@]}"
+          elif [ "$IS_DRAFT" != true ]; then
+            echo "::error::Release $TAG is already published; release a new version instead."
+            exit 1
+          elif [ "$GITHUB_RUN_ATTEMPT" = 1 ]; then
+            echo "::notice::Refreshing the $TAG draft left over from an earlier push of the tag."
+            gh release edit "$TAG" "${RELEASE_ARGS[@]}"
+          else
+            echo "::notice::Re-run: keeping the notes of the $TAG draft and replacing its files."
+          fi
+
+          gh release upload "$TAG" --clobber \
+            "build/distributions/web3signer-${TAG}.tar.gz" \
+            "build/distributions/web3signer-${TAG}.tar.gz.sha256" \
+            "build/distributions/web3signer-${TAG}.zip" \
+            "build/distributions/web3signer-${TAG}.zip.sha256"

@@ -18,8 +18,9 @@ import static tech.pegasys.web3signer.bls.keystore.model.Pbkdf2PseudoRandomFunct
 import tech.pegasys.teku.bls.BLSKeyPair;
 import tech.pegasys.web3signer.bls.keystore.KeyStore;
 import tech.pegasys.web3signer.bls.keystore.KeyStoreLoader;
-import tech.pegasys.web3signer.bls.keystore.model.Cipher;
 import tech.pegasys.web3signer.bls.keystore.model.CipherFunction;
+import tech.pegasys.web3signer.bls.keystore.model.CipherParam;
+import tech.pegasys.web3signer.bls.keystore.model.CipherSpec;
 import tech.pegasys.web3signer.bls.keystore.model.KdfFunction;
 import tech.pegasys.web3signer.bls.keystore.model.KdfParam;
 import tech.pegasys.web3signer.bls.keystore.model.KeyStoreData;
@@ -27,7 +28,8 @@ import tech.pegasys.web3signer.bls.keystore.model.Pbkdf2Param;
 import tech.pegasys.web3signer.bls.keystore.model.SCryptParam;
 import tech.pegasys.web3signer.common.config.AwsAuthenticationMode;
 import tech.pegasys.web3signer.dsl.HashicorpSigningParams;
-import tech.pegasys.web3signer.keystore.hashicorp.dsl.certificates.CertificateHelpers;
+import tech.pegasys.web3signer.keystorage.azure.AzureOverrides;
+import tech.pegasys.web3signer.keystore.dsl.certificates.CertificateHelpers;
 import tech.pegasys.web3signer.signing.KeyType;
 import tech.pegasys.web3signer.signing.config.metadata.AwsKmsMetadata;
 import tech.pegasys.web3signer.signing.config.metadata.AwsKmsMetadataDeserializer;
@@ -45,13 +47,13 @@ import java.util.Optional;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import org.apache.tuweni.bytes.Bytes;
-import org.apache.tuweni.bytes.Bytes32;
 
 public class MetadataFileHelpers {
   private static final ObjectMapper YAML_OBJECT_MAPPER = YAMLMapper.builder().build();
   private static final Bytes SALT =
       Bytes.fromHexString("0x9ac471d9d421bc06d9aefe2b46cf96d11829c51e36ed0b116132be57a9f8c22b");
-  private static final Bytes IV = Bytes.fromHexString("0xcca2c67ec95a1dd13edd986fea372789");
+  private static final CipherParam IV =
+      new CipherParam(Bytes.fromHexString("0xcca2c67ec95a1dd13edd986fea372789"));
 
   public void createUnencryptedYamlFileAt(
       final Path metadataFilePath, final String privateKey, final KeyType keyType) {
@@ -76,18 +78,11 @@ public class MetadataFileHelpers {
 
   public void createKeyStoreYamlFileAt(
       final Path metadataFilePath, final BLSKeyPair keyPair, final KdfFunction kdfFunctionType) {
-    final Bytes32 privateKeyBytes = keyPair.getSecretKey().toBytes();
-
     final String password = "password";
 
     final Path keystoreFile =
         metadataFilePath.getParent().resolve(keyPair.getPublicKey().toString() + ".json");
-    createKeyStoreFile(
-        keystoreFile,
-        password,
-        privateKeyBytes,
-        keyPair.getPublicKey().toBytesCompressed(),
-        kdfFunctionType);
+    createKeyStoreFile(keystoreFile, password, keyPair, kdfFunctionType);
 
     createKeyStoreYamlFileAt(metadataFilePath, keystoreFile, password, KeyType.BLS);
   }
@@ -151,7 +146,8 @@ public class MetadataFileHelpers {
       final String clientSecret,
       final String tenantId,
       final String keyVaultName,
-      final String secretName) {
+      final String secretName,
+      final AzureOverrides azureOverrides) {
     try {
       final Map<String, String> signingMetadata = new HashMap<>();
 
@@ -161,6 +157,7 @@ public class MetadataFileHelpers {
       signingMetadata.put("tenantId", tenantId);
       signingMetadata.put("vaultName", keyVaultName);
       signingMetadata.put("secretName", secretName);
+      putAzureOverrides(signingMetadata, azureOverrides);
 
       createYamlFile(metadataFilePath, signingMetadata);
     } catch (final Exception e) {
@@ -174,7 +171,8 @@ public class MetadataFileHelpers {
       final String clientSecret,
       final String keyVaultName,
       final String tenantId,
-      final String keyName) {
+      final String keyName,
+      final AzureOverrides azureOverrides) {
     try {
       final Map<String, String> signingMetadata = new HashMap<>();
       signingMetadata.put("type", "azure-key");
@@ -183,10 +181,25 @@ public class MetadataFileHelpers {
       signingMetadata.put("clientId", clientId);
       signingMetadata.put("clientSecret", clientSecret);
       signingMetadata.put("tenantId", tenantId);
+      putAzureOverrides(signingMetadata, azureOverrides);
       createYamlFile(metadataFilePath, signingMetadata);
     } catch (final Exception e) {
       throw new RuntimeException("Unable to construct hashicorp yaml file", e);
     }
+  }
+
+  private static void putAzureOverrides(
+      final Map<String, String> signingMetadata, final AzureOverrides azureOverrides) {
+    azureOverrides
+        .endpointOverride()
+        .ifPresent(endpoint -> signingMetadata.put("endpointOverride", endpoint.toString()));
+    azureOverrides
+        .authorityHostOverride()
+        .ifPresent(authority -> signingMetadata.put("authorityHostOverride", authority.toString()));
+    azureOverrides
+        .trustCertificateOverride()
+        .ifPresent(
+            certificate -> signingMetadata.put("trustCertificateOverride", certificate.toString()));
   }
 
   public void createAwsYamlFileAt(
@@ -276,16 +289,15 @@ public class MetadataFileHelpers {
   private void createKeyStoreFile(
       final Path keyStoreFilePath,
       final String password,
-      final Bytes privateKey,
-      final Bytes publicKey,
+      final BLSKeyPair blsKeyPair,
       final KdfFunction kdfFunctionType) {
     final KdfParam kdfParam =
         kdfFunctionType == KdfFunction.SCRYPT
             ? new SCryptParam(32, SALT)
             : new Pbkdf2Param(32, 262144, HMAC_SHA256, SALT);
-    final Cipher cipher = new Cipher(CipherFunction.AES_128_CTR, IV);
+    final CipherSpec cipher = new CipherSpec(CipherFunction.AES_128_CTR, IV);
     final KeyStoreData keyStoreData =
-        KeyStore.encrypt(privateKey, publicKey, password, "m/12381/3600/0/0/0", kdfParam, cipher);
+        KeyStore.encrypt(blsKeyPair, password, "m/12381/3600/0/0/0", kdfParam, cipher);
     try {
       KeyStoreLoader.saveToFile(keyStoreFilePath, keyStoreData);
     } catch (IOException e) {

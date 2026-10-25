@@ -30,9 +30,13 @@ import tech.pegasys.web3signer.bls.keystore.model.KdfFunction;
 import tech.pegasys.web3signer.core.service.http.ArtifactType;
 import tech.pegasys.web3signer.core.service.http.handlers.signing.eth2.Eth2SigningRequestBody;
 import tech.pegasys.web3signer.dsl.HashicorpSigningParams;
+import tech.pegasys.web3signer.dsl.azure.AzureKeyVaultEmulator;
+import tech.pegasys.web3signer.dsl.azure.MockAzureAuthorityExtension;
+import tech.pegasys.web3signer.dsl.signer.SignerConfigurationBuilder;
 import tech.pegasys.web3signer.dsl.utils.Eth2RequestUtils;
 import tech.pegasys.web3signer.dsl.utils.MetadataFileHelpers;
 import tech.pegasys.web3signer.keystorage.azure.AzureKeyVault;
+import tech.pegasys.web3signer.keystorage.azure.AzureOverrides;
 import tech.pegasys.web3signer.keystore.hashicorp.dsl.HashicorpNode;
 import tech.pegasys.web3signer.signing.KeyType;
 import tech.pegasys.web3signer.tests.bulkloading.AzureKeyVaultAcceptanceTest;
@@ -51,6 +55,7 @@ import org.apache.tuweni.bytes.Bytes32;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariables;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -60,6 +65,10 @@ public class BlsSigningAcceptanceTest extends SigningAcceptanceTestBase {
   private static final String PRIVATE_KEY =
       "3ee2224386c82ffea477e2adf28a2929f5c349165a4196158c7f3a2ecca40f35";
   private static final MetadataFileHelpers METADATA_FILE_HELPERS = new MetadataFileHelpers();
+
+  @RegisterExtension
+  static final MockAzureAuthorityExtension MOCK_AUTHORITY = new MockAzureAuthorityExtension();
+
   private static final BLSSecretKey KEY =
       BLSSecretKey.fromBytes(Bytes32.fromHexString(PRIVATE_KEY));
   private static final BLSKeyPair KEY_PAIR = new BLSKeyPair(KEY);
@@ -157,36 +166,54 @@ public class BlsSigningAcceptanceTest extends SigningAcceptanceTestBase {
   }
 
   @Test
-  @EnabledIfEnvironmentVariables({
-    @EnabledIfEnvironmentVariable(named = "AZURE_CLIENT_ID", matches = ".+"),
-    @EnabledIfEnvironmentVariable(named = "AZURE_CLIENT_SECRET", matches = ".+"),
-    @EnabledIfEnvironmentVariable(named = "AZURE_KEY_VAULT_NAME", matches = ".+"),
-    @EnabledIfEnvironmentVariable(named = "AZURE_TENANT_ID", matches = ".+")
-  })
   public void ableToSignUsingAzure() throws JsonProcessingException {
-    final String clientId = System.getenv("AZURE_CLIENT_ID");
-    final String clientSecret = System.getenv("AZURE_CLIENT_SECRET");
-    final String tenantId = System.getenv("AZURE_TENANT_ID");
-    final String keyVaultName = System.getenv("AZURE_KEY_VAULT_NAME");
+    final AzureKeyVaultEmulator emulator = AzureKeyVaultEmulator.getInstance();
 
     // fetch secret which only has single value containing the private key. The metadata file
     // approach is not able to cater for multiple values in azure secret at present.
     final AzureKeyVault.AzureSecret azureSecret =
-        AzureKeyVaultAcceptanceTest.getBLSSecretsFromAzureVault().stream()
+        AzureKeyVaultAcceptanceTest.getBLSSecretsFromEmulator(
+                new AzureOverrides(
+                    Optional.of(URI.create(emulator.getVaultUrl())),
+                    Optional.of(URI.create(MOCK_AUTHORITY.getAuthorityHostUrl())),
+                    Optional.of(emulator.getTrustCertificatePath())))
+            .stream()
             .filter(entry -> entry.values().size() == 1)
             .findFirst()
             .orElseThrow();
 
     final Path keyConfigFile = testDirectory.resolve("azure_key.yaml");
     METADATA_FILE_HELPERS.createAzureYamlFileAt(
-        keyConfigFile, clientId, clientSecret, tenantId, keyVaultName, azureSecret.name());
+        keyConfigFile,
+        "unused",
+        "unused",
+        AzureKeyVaultEmulator.TENANT_ID,
+        "unused",
+        azureSecret.name(),
+        new AzureOverrides(
+            Optional.of(URI.create(emulator.getVaultUrl())),
+            Optional.of(URI.create(MOCK_AUTHORITY.getAuthorityHostUrl())),
+            Optional.of(emulator.getTrustCertificatePath())));
 
     final BLSSecretKey azurePrivateKey =
         BLSSecretKey.fromBytes(
             Bytes32.fromHexString(azureSecret.values().stream().findFirst().orElseThrow()));
     final BLSKeyPair blsKeyPair = new BLSKeyPair(azurePrivateKey);
 
-    signAndVerifySignature(ArtifactType.BLOCK, blsKeyPair, TEXT);
+    final SignerConfigurationBuilder builder =
+        new SignerConfigurationBuilder()
+            .withKeyStoreDirectory(testDirectory)
+            .withMode("eth2")
+            .withNetwork(Eth2Network.MINIMAL.configName())
+            .withOverriddenCA(emulator.getTlsCertificateDefinition());
+    setForkEpochsAndStartSigner(builder, SpecMilestone.PHASE0);
+
+    final Eth2SigningRequestBody request = Eth2RequestUtils.createCannedRequest(ArtifactType.BLOCK);
+    final Response response = signer.eth2Sign(blsKeyPair.getPublicKey().toString(), request, TEXT);
+    final Bytes signature = verifyAndGetSignatureResponse(response, TEXT);
+    final BLSSignature expectedSignature =
+        BLS.sign(blsKeyPair.getSecretKey(), request.signingRoot());
+    assertThat(signature).isEqualTo(expectedSignature.toBytesCompressed());
   }
 
   @Test
@@ -278,11 +305,34 @@ public class BlsSigningAcceptanceTest extends SigningAcceptanceTestBase {
             request.syncCommitteeMessage(),
             request.syncAggregatorSelectionData(),
             request.contributionAndProof(),
-            request.validatorRegistration());
+            request.validatorRegistration(),
+            request.executionPayloadBid(),
+            request.executionPayloadEnvelope(),
+            request.payloadAttestationMessage(),
+            request.proposerPreferences(),
+            request.builderRequestAuth());
 
     final Response response =
         signer.eth2Sign(KEY_PAIR.getPublicKey().toString(), requestWithMismatchedSigningRoot);
-    assertThat(response.getStatusCode()).isEqualTo(500);
+    assertThat(response.getStatusCode()).isEqualTo(400);
+  }
+
+  @Test
+  void failsWithBadRequestIfDeclaredMilestoneIsNotScheduledOnNetwork()
+      throws JsonProcessingException {
+    final String configFilename = PUBLIC_KEY.toString().substring(2);
+
+    final Path keyConfigFile = testDirectory.resolve(configFilename + ".yaml");
+    METADATA_FILE_HELPERS.createKeyStoreYamlFileAt(keyConfigFile, KEY_PAIR, KdfFunction.SCRYPT);
+
+    // Gloas is not scheduled on this network, so the declared "GLOAS" version must be rejected.
+    setupEth2Signer(Eth2Network.MINIMAL, SpecMilestone.FULU);
+
+    final Eth2SigningRequestBody request =
+        Eth2RequestUtils.createCannedRequest(ArtifactType.EXECUTION_PAYLOAD_BID);
+    final Response response = signer.eth2Sign(KEY_PAIR.getPublicKey().toString(), request);
+
+    assertThat(response.getStatusCode()).isEqualTo(400);
   }
 
   @ParameterizedTest
@@ -316,7 +366,12 @@ public class BlsSigningAcceptanceTest extends SigningAcceptanceTestBase {
             request.syncCommitteeMessage(),
             request.syncAggregatorSelectionData(),
             request.contributionAndProof(),
-            request.validatorRegistration());
+            request.validatorRegistration(),
+            request.executionPayloadBid(),
+            request.executionPayloadEnvelope(),
+            request.payloadAttestationMessage(),
+            request.proposerPreferences(),
+            request.builderRequestAuth());
 
     final Response response =
         signer.eth2Sign(
@@ -369,10 +424,16 @@ public class BlsSigningAcceptanceTest extends SigningAcceptanceTestBase {
   private void setupMinimalWeb3Signer(final ArtifactType artifactType) {
     switch (artifactType) {
       case BLOCK_V2,
-              SYNC_COMMITTEE_MESSAGE,
-              SYNC_COMMITTEE_SELECTION_PROOF,
-              SYNC_COMMITTEE_CONTRIBUTION_AND_PROOF ->
+          SYNC_COMMITTEE_MESSAGE,
+          SYNC_COMMITTEE_SELECTION_PROOF,
+          SYNC_COMMITTEE_CONTRIBUTION_AND_PROOF ->
           setupEth2Signer(Eth2Network.MINIMAL, SpecMilestone.ALTAIR);
+      case EXECUTION_PAYLOAD_BID,
+          EXECUTION_PAYLOAD_ENVELOPE,
+          PAYLOAD_ATTESTATION_MESSAGE,
+          PROPOSER_PREFERENCES,
+          BUILDER_REQUEST_AUTH ->
+          setupEth2Signer(Eth2Network.MINIMAL, SpecMilestone.GLOAS);
       default -> setupEth2Signer(Eth2Network.MINIMAL, SpecMilestone.PHASE0);
     }
   }

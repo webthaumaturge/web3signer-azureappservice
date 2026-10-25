@@ -22,6 +22,7 @@ import static tech.pegasys.web3signer.signing.config.KeystoresParameters.KEYSTOR
 
 import tech.pegasys.web3signer.commandline.PicoCliAwsKmsParameters;
 import tech.pegasys.web3signer.commandline.PicoCliAzureKeyVaultParameters;
+import tech.pegasys.web3signer.commandline.VersionProvider;
 import tech.pegasys.web3signer.commandline.annotations.RequiredOption;
 import tech.pegasys.web3signer.commandline.config.PicoV3KeystoresBulkloadParameters;
 import tech.pegasys.web3signer.commandline.config.client.PicoCliClientTlsOptions;
@@ -47,8 +48,10 @@ import picocli.CommandLine.HelpCommand;
 @Command(
     name = Eth1SubCommand.COMMAND_NAME,
     description = "Handle Ethereum-1 SECP256k1 signing operations and public key reporting",
-    subcommands = {HelpCommand.class},
-    mixinStandardHelpOptions = true)
+    subcommands = {HelpCommand.class, XHelpSubCommand.class},
+    versionProvider = VersionProvider.class,
+    mixinStandardHelpOptions = true,
+    footer = "Unstable options are omitted from this help. Run 'web3signer eth1 -X' to list them.")
 public class Eth1SubCommand extends ModeSubCommand implements Eth1Config {
 
   public static final String COMMAND_NAME = "eth1";

@@ -23,11 +23,13 @@ import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParame
 import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParameters.AWS_SECRETS_SECRET_ACCESS_KEY_OPTION;
 import static tech.pegasys.web3signer.commandline.PicoCliAwsSecretsManagerParameters.AWS_SECRETS_TAG_OPTION;
 
+import tech.pegasys.web3signer.commandline.logging.LoggingFormat;
 import tech.pegasys.web3signer.commandline.subcommands.Eth2SubCommand;
 import tech.pegasys.web3signer.common.config.AwsAuthenticationMode;
 import tech.pegasys.web3signer.core.Context;
 import tech.pegasys.web3signer.core.Runner;
 import tech.pegasys.web3signer.core.config.BaseConfig;
+import tech.pegasys.web3signer.keystorage.common.MappedResults;
 import tech.pegasys.web3signer.signing.ArtifactSignerProvider;
 import tech.pegasys.web3signer.signing.config.DefaultArtifactSignerProvider;
 
@@ -40,9 +42,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 
-import io.vertx.core.Vertx;
 import org.apache.logging.log4j.Level;
 import org.hyperledger.besu.plugin.services.MetricsSystem;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import picocli.CommandLine;
@@ -69,6 +71,16 @@ class CommandlineParserTest {
     parser = new CommandlineParser(config, outputWriter, errorWriter, Collections.emptyMap());
   }
 
+  @AfterEach
+  void cleanup() {
+    if (outputWriter != null) {
+      outputWriter.close();
+    }
+    if (errorWriter != null) {
+      errorWriter.close();
+    }
+  }
+
   @Test
   void fullyPopulatedCommandLineParsesIntoVariables() {
     final int result = parser.parseCommandLine(validBaseCommandOptions().split(" "));
@@ -76,29 +88,29 @@ class CommandlineParserTest {
     assertThat(result).isZero();
 
     assertThat(config.getLogLevel()).isEqualTo(Level.INFO);
+    assertThat(config.getLoggingFormat()).isEqualTo(LoggingFormat.PLAIN);
     assertThat(config.getHttpListenHost()).isEqualTo("localhost");
     assertThat(config.getHttpListenPort()).isEqualTo(5001);
     assertThat(config.getIdleConnectionTimeoutSeconds()).isEqualTo(45);
   }
 
   @Test
-  void mainCommandHelpIsDisplayedWhenNoOptionsOtherThanHelp() {
-    final int result = parser.parseCommandLine("--help");
-    assertThat(result).isZero();
-    assertThat(commandOutput.toString()).isEqualTo(DEFAULT_USAGE_TEXT);
-  }
-
-  @Test
-  void mainCommandHelpIsDisplayedWhenNoOptionsOtherThanHelpWithoutDashes() {
-    final int result = parser.parseCommandLine("help");
-    assertThat(result).isZero();
-    assertThat(commandOutput.toString()).containsOnlyOnce(DEFAULT_USAGE_TEXT);
-  }
-
-  @Test
   void missingLoggingDefaultsToInfoLevel() {
     // Must recreate config before executions, to prevent stale data remaining in the object.
-    missingOptionalParameterIsValidAndMeetsDefault("logging", config::getLogLevel, null);
+    missingOptionalParameterIsValidAndMeetsDefault("logging", config::getLogLevel, Level.INFO);
+  }
+
+  @Test
+  void missingLoggingFormatDefaultsToPlain() {
+    missingOptionalParameterIsValidAndMeetsDefault(
+        "logging-format", config::getLoggingFormat, LoggingFormat.PLAIN);
+  }
+
+  @Test
+  void loggingFormatChangeIsValid() {
+    final int result = parser.parseCommandLine("--logging-format=ECS");
+    assertThat(result).isZero();
+    assertThat(config.getLoggingFormat()).isEqualTo(LoggingFormat.ECS);
   }
 
   @Test
@@ -113,7 +125,7 @@ class CommandlineParserTest {
   void unknownCommandLineOptionDisplaysErrorMessage() {
     final int result = parser.parseCommandLine("--nonExistentOption=9");
     assertThat(result).isNotZero();
-    assertThat(commandOutput.toString()).containsOnlyOnce(DEFAULT_USAGE_TEXT);
+    assertThat(commandOutput.toString()).isEqualTo(DEFAULT_USAGE_TEXT);
   }
 
   @Test
@@ -472,7 +484,7 @@ class CommandlineParserTest {
     assertThat(result).isNotZero();
     assertThat(commandError.toString())
         .contains(
-            "Error parsing parameters: Invalid value for option '--aws-secrets-auth-mode': expected one of [ENVIRONMENT, SPECIFIED] (case-sensitive) but was 'UNKNOWN'");
+            "Error parsing parameters: Invalid value for option '--aws-secrets-auth-mode': expected one of [ENVIRONMENT, SPECIFIED] (case-insensitive) but was 'UNKNOWN'");
   }
 
   @Test
@@ -628,7 +640,21 @@ class CommandlineParserTest {
     final int result = parser.parseCommandLine(cmdLine.split(" "));
     assertThat(result).isZero();
     assertThat(actualValueGetter.get()).isEqualTo(expectedValue);
-    assertThat(commandOutput.toString()).isEmpty();
+
+    // default init logging at INFO level
+    final String output = commandOutput.toString().trim();
+    assertThat(output)
+        // Check timestamp format
+        .containsPattern("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3}[+-]\\d{4}")
+        // Check log level
+        .contains("INFO")
+        // Check logger name
+        .contains("Web3SignerInit")
+        // Check message
+        .contains("Starting Web3Signer version");
+
+    // Ensure it's a single line i.e. not polluted with unnecessary logging statements
+    assertThat(output.lines().count()).isEqualTo(1);
   }
 
   public static class MockEth2SubCommand extends Eth2SubCommand {
@@ -653,10 +679,10 @@ class CommandlineParserTest {
 
     @Override
     protected List<ArtifactSignerProvider> createArtifactSignerProvider(
-        final Vertx vertx, final MetricsSystem metricsSystem) {
+        final MetricsSystem metricsSystem) {
       return List.of(
           new DefaultArtifactSignerProvider(
-              Collections::emptyList, Optional.empty(), Optional.empty()));
+              MappedResults::newSetInstance, Optional.empty(), Optional.empty()));
     }
 
     @Override

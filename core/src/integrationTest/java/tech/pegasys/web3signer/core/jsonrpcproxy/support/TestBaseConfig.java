@@ -12,6 +12,7 @@
  */
 package tech.pegasys.web3signer.core.jsonrpcproxy.support;
 
+import tech.pegasys.web3signer.common.config.SignerLoaderConfig;
 import tech.pegasys.web3signer.core.config.BaseConfig;
 import tech.pegasys.web3signer.core.config.MetricsPushOptions;
 import tech.pegasys.web3signer.core.config.TlsOptions;
@@ -23,7 +24,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-import org.apache.logging.log4j.Level;
 import org.hyperledger.besu.plugin.services.metrics.MetricCategory;
 
 public class TestBaseConfig implements BaseConfig {
@@ -37,11 +37,6 @@ public class TestBaseConfig implements BaseConfig {
     this.dataPath = dataPath;
     this.keyConfigPath = keyConfigPath;
     this.allowedCorsOrigin = allowedCorsOrigin;
-  }
-
-  @Override
-  public Level getLogLevel() {
-    return Level.INFO;
   }
 
   @Override
@@ -128,12 +123,17 @@ public class TestBaseConfig implements BaseConfig {
   }
 
   @Override
-  public boolean keystoreParallelProcessingEnabled() {
-    return true;
+  public int getVertxWorkerPoolSize() {
+    return 20;
   }
 
   @Override
-  public int getVertxWorkerPoolSize() {
-    return 20;
+  public SignerLoaderConfig getSignerLoaderConfig() {
+    return new SignerLoaderConfig(getKeyConfigPath(), true, 500, 60, 100);
+  }
+
+  @Override
+  public long getReloadTimeoutMinutes() {
+    return 30L;
   }
 }

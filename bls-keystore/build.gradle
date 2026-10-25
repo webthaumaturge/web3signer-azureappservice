@@ -19,6 +19,9 @@ dependencies {
   implementation 'com.google.guava:guava'
   implementation 'org.apache.logging.log4j:log4j-api'
   implementation 'io.consensys.tuweni:tuweni-bytes'
+  implementation 'tech.pegasys.teku.internal:bls'
+
+  runtimeOnly 'tech.pegasys:jblst'
 
   testImplementation 'org.assertj:assertj-core'
   testImplementation 'org.junit.jupiter:junit-jupiter-api'
@@ -39,7 +42,7 @@ jar {
             'Specification-Title': archiveBaseName,
             'Specification-Version': project.version,
             'Implementation-Title': archiveBaseName,
-            'Implementation-Version': calculateVersion()
+            'Implementation-Version': buildVersion
     )
   }
 }

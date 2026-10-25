@@ -17,6 +17,7 @@ import static java.net.HttpURLConnection.HTTP_INTERNAL_ERROR;
 import static tech.pegasys.web3signer.core.service.http.handlers.ContentTypes.JSON_UTF_8;
 
 import tech.pegasys.web3signer.core.service.http.SigningObjectMapperFactory;
+import tech.pegasys.web3signer.core.service.http.handlers.ErrorResponseException;
 import tech.pegasys.web3signer.core.service.http.handlers.commitboost.json.PublicKeyMappings;
 import tech.pegasys.web3signer.core.service.http.handlers.commitboost.json.PublicKeysResponse;
 import tech.pegasys.web3signer.signing.ArtifactSignerProvider;
@@ -30,11 +31,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.vertx.core.Handler;
 import io.vertx.ext.web.RoutingContext;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 public class CommitBoostPublicKeysHandler implements Handler<RoutingContext> {
-  private static final Logger LOG = LogManager.getLogger();
   private final ArtifactSignerProvider artifactSignerProvider;
   private final ObjectMapper objectMapper = SigningObjectMapperFactory.createObjectMapper();
 
@@ -50,8 +48,7 @@ public class CommitBoostPublicKeysHandler implements Handler<RoutingContext> {
       context.response().putHeader(CONTENT_TYPE, JSON_UTF_8).end(jsonEncoded);
     } catch (final JsonProcessingException e) {
       // this is not meant to happen
-      LOG.error("Failed to encode public keys response", e);
-      context.fail(HTTP_INTERNAL_ERROR);
+      context.fail(HTTP_INTERNAL_ERROR, new ErrorResponseException("Internal Error", e));
     }
   }
 
@@ -66,10 +63,9 @@ public class CommitBoostPublicKeysHandler implements Handler<RoutingContext> {
       final ArtifactSignerProvider provider, final String consensusPubKey) {
     final Map<KeyType, Set<String>> proxyIdentifiers =
         provider.getProxyIdentifiers(consensusPubKey);
-    final Set<String> proxyBlsPublicKeys =
-        proxyIdentifiers.computeIfAbsent(KeyType.BLS, k -> Set.of());
+    final Set<String> proxyBlsPublicKeys = proxyIdentifiers.getOrDefault(KeyType.BLS, Set.of());
     final Set<String> proxyEcdsaPublicKeys =
-        proxyIdentifiers.computeIfAbsent(KeyType.SECP256K1, k -> Set.of());
+        proxyIdentifiers.getOrDefault(KeyType.SECP256K1, Set.of());
     return new PublicKeyMappings(consensusPubKey, proxyBlsPublicKeys, proxyEcdsaPublicKeys);
   }
 }

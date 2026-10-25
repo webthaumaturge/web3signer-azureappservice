@@ -15,34 +15,25 @@
 import com.github.jk1.license.filter.LicenseBundleNormalizer
 import groovy.transform.Memoized
 import net.ltgt.gradle.errorprone.CheckSeverity
-import tech.pegasys.internal.license.reporter.GroupedLicenseHtmlRenderer
+import io.consensys.protocols.license.reporter.GroupedLicenseHtmlRenderer
 
 import java.text.SimpleDateFormat
 
 buildscript {
-  repositories {
-    maven { url = "https://artifacts.consensys.net/public/maven/maven/" }
-  }
   dependencies {
-    classpath 'tech.pegasys.internal.license.reporter:license-reporter:1.1.1'
+    classpath 'io.consensys.protocols:license-reporter:1.2.0'
   }
 }
 
 plugins {
-  id 'org.owasp.dependencycheck' version "12.1.8"
+  id 'org.owasp.dependencycheck' version "13.0.0"
   id 'java-test-fixtures'
-  id 'com.diffplug.spotless' version '8.0.0'
-  id 'com.github.ben-manes.versions' version '0.53.0' //`./gradlew dependencyUpdates --no-parallel` to report outdated dependencies
-  id 'com.github.jk1.dependency-license-report' version '2.9'
+  id 'com.diffplug.spotless' version '8.10.4'
+  id 'io.github.ben-manes.versions' version '0.66.0' //`./gradlew dependencyUpdates --no-parallel` to report outdated dependencies
+  id 'com.github.jk1.dependency-license-report' version '3.1.4'
   id 'io.spring.dependency-management' version '1.1.7'
   id 'me.champeau.jmh' version '0.7.3' apply false
-  id 'net.ltgt.errorprone' version '4.3.0'
-  id 'org.ajoberstar.grgit' version '5.3.3'
-}
-
-if (!JavaVersion.current().isCompatibleWith(JavaVersion.VERSION_21)) {
-  throw new GradleException("Java 21 or later is required to build Web3Signer.\n" +
-  "  Detected version ${JavaVersion.current()}")
+  id 'net.ltgt.errorprone' version '5.1.1'
 }
 
 rootProject.version = calculatePublishVersion()
@@ -96,7 +87,7 @@ allprojects {
 
   version = rootProject.version
 
-  jacoco { toolVersion = '0.8.11' }
+  jacoco { toolVersion = '0.8.15' }
 
   tasks.register('sourcesJar', Jar) {
     dependsOn classes
@@ -111,8 +102,9 @@ allprojects {
   }
 
   java {
-    sourceCompatibility = 21
-    targetCompatibility = 21
+    toolchain {
+      languageVersion = JavaLanguageVersion.of(25)
+    }
   }
 
   repositories {
@@ -139,11 +131,18 @@ allprojects {
         exclude '**/build/**'
       }
       // See gradle.properties for exports/opens flags required by JDK 16 and Google Java Format plugin
-      googleJavaFormat('1.22.0')
+      googleJavaFormat('1.36.1')
       importOrder 'tech.pegasys', 'java', ''
       trimTrailingWhitespace()
       endWithNewline()
-      licenseHeaderFile "${rootDir}/gradle/spotless.java.license"
+      // Apply the header matching each file's existing owner; files with no recognised header get the
+      // current one.
+      licenseHeaderFile("${rootDir}/gradle/spotless.java.former.license").named("former").onlyIfContentMatches("^/\\*\\r?\\n \\* Copyright \\d{4} ConsenSys AG\\.")
+      licenseHeaderFile("${rootDir}/gradle/spotless.java.current.license").named("current").onlyIfContentMatches("^(?!/\\*\\r?\\n \\* Copyright \\d{4} ConsenSys AG\\.)")
+      // One-shot migration: stamp every file with the current owner, replacing any existing header.
+      // Delete (or comment out) the two steps above and uncomment the line below. Existing years are
+      // kept as-is, only the owner changes.
+      // licenseHeaderFile("${rootDir}/gradle/spotless.java.current.license")
     }
   }
 
@@ -151,10 +150,10 @@ allprojects {
     nvd.apiKey = System.getenv('NVD_API_KEY')
     failBuildOnCVSS = 7 // Fail on high CVSS severity
     suppressionFile = "${rootDir}/gradle/owasp-suppression.xml"
-    skipConfigurations = [
-      'integrationTestCompileClasspath',
-      'integrationTestRuntimeClasspath'
-    ]
+    // HTML for people, JSON for the CI data-freshness check, SARIF for GitHub code scanning
+    formats = ['HTML', 'JSON', 'SARIF']
+    // Only what ships in the distribution; build tooling (errorprone, jacoco) and test classpaths are out of scope
+    scanConfigurations = ['runtimeClasspath']
     skipProjects = [
       ':acceptance-tests'
     ]
@@ -228,7 +227,10 @@ allprojects {
       '--add-opens',
       'java.base/java.util=ALL-UNNAMED',
       '--add-opens',
-      'java.base/java.util.concurrent=ALL-UNNAMED'
+      'java.base/java.util.concurrent=ALL-UNNAMED',
+      // Suppress JDK 24+ restricted-method warning emitted by jblst's
+      // System.loadLibrary call. Mirrors applicationDefaultJvmArgs.
+      '--enable-native-access=ALL-UNNAMED'
     ]
     Set toImport = [
       'root.log.level',
@@ -251,7 +253,7 @@ allprojects {
 }
 
 licenseReport {
-  outputDir = "${buildDir}/reports/licenses"
+  outputDir = layout.buildDirectory.dir("reports/licenses").get().asFile.absolutePath
   excludes = [
     'com.fasterxml.jackson:jackson-bom'
   ]
@@ -320,7 +322,6 @@ subprojects {
     exclude group: 'io.tmio', module: 'tuweni-units'
   }
 
-
   tasks.register('integrationTest', Test) {
     dependsOn "compileTestJava"
     group = "verification"
@@ -328,7 +329,7 @@ subprojects {
     testClassesDirs = sourceSets.integrationTest.output.classesDirs
     classpath = sourceSets.integrationTest.runtimeClasspath
     outputs.upToDateWhen { false }
-    jvmArgs = ['-Xms512m', '-Xmx1g']
+    jvmArgs = ['-Xms512m', '-Xmx1g', '--enable-native-access=ALL-UNNAMED']
     useJUnitPlatform()
   }
 
@@ -347,7 +348,7 @@ subprojects {
       iterations = _intCmdArg('i')
       benchmarkMode = _strListCmdArg('bm')
       include = _strListCmdArg('include', [''])
-      humanOutputFile = project.file("${project.buildDir}/reports/jmh/results.txt")
+      humanOutputFile = layout.buildDirectory.file("reports/jmh/results.txt").get().asFile
       resultFormat = 'JSON'
     }
 
@@ -358,6 +359,13 @@ subprojects {
 jar { enabled = false }
 
 apply plugin: 'application'
+// IMPORTANT: the JVM flags listed in applicationDefaultJvmArgs below are baked
+// into the gradle-generated bin/web3signer launcher, which docker/Dockerfile
+// uses as its ENTRYPOINT — so the default image inherits them automatically.
+// The distroless image (docker/Dockerfile.distroless) has no shell and invokes
+// `java` directly, so it reproduces this list by hand (plus a handful of
+// distroless-only hardening flags). When you add/remove/change any flag here,
+// make the matching change in docker/Dockerfile.distroless.
 application {
   mainClass = "tech.pegasys.web3signer.Web3SignerApp"
   applicationDefaultJvmArgs = [
@@ -374,13 +382,22 @@ application {
     "-Dio.netty.tryReflectionSetAccessible=true",
     "--add-exports",
     "jdk.crypto.cryptoki/sun.security.pkcs11.wrapper=ALL-UNNAMED",
+    // required for jblst
+    "--enable-native-access=ALL-UNNAMED",
   ]
 }
 
 run {
-  args project.hasProperty("web3signer.run.args") ? project.property("web3signer.run.args").toString().split("\\s+") : []
+  args project.hasProperty("web3signer.run.args") ?
+          project.property("web3signer.run.args").toString().split("\\s+") : []
+
   doFirst {
-    applicationDefaultJvmArgs = applicationDefaultJvmArgs.collect{it.replace('WEB3SIGNER_HOME', "$buildDir/web3signer")}
+    // Resolve the path string from the lazy provider
+    def web3signerPath = layout.buildDirectory.dir("web3signer").get().asFile.absolutePath
+
+    applicationDefaultJvmArgs = applicationDefaultJvmArgs.collect {
+      it.replace('WEB3SIGNER_HOME', web3signerPath)
+    }
   }
 }
 
@@ -469,16 +486,37 @@ def buildTime() {
   return df.format(new Date())
 }
 
+// Runs git in the root project directory and returns its trimmed stdout, or null if git fails
+// (e.g. not a git checkout, no tags to describe) or is not installed.
+// providers.exec is the supported way to run a process at configuration time.
+def gitOutput(String... args) {
+  try {
+    def exec = providers.exec {
+      commandLine(['git'] + args.toList())
+      workingDir = rootProject.projectDir
+      ignoreExitValue = true
+    }
+    return exec.result.get().exitValue == 0 ? exec.standardOutput.asText.get().trim() : null
+  } catch (Exception ignored) {
+    return null
+  }
+}
+
+@Memoized
+def isGitCheckout() {
+  return gitOutput('rev-parse', '--git-dir') != null
+}
+
 // Calculate the version that this build would be published under (if it is published)
 // If this exact commit is tagged, use the tag
 // If this is on a release-* branch, use the most recent tag appended with +develop (e.g. 0.1.1-RC1+develop)
 // Otherwise, use develop
 def calculatePublishVersion() {
-  if (!grgit) {
+  if (!isGitCheckout()) {
     return 'develop'
   }
   def specificVersion = calculateVersion()
-  def isReleaseBranch = grgit.branch.current().name.startsWith('release-')
+  def isReleaseBranch = gitOutput('rev-parse', '--abbrev-ref', 'HEAD')?.startsWith('release-')
   if (specificVersion.contains('+')) {
     return isReleaseBranch ? "${specificVersion.substring(0, specificVersion.indexOf('+'))}+develop" : "develop"
   }
@@ -490,13 +528,13 @@ def calculatePublishVersion() {
 // Otherwise use git describe --tags and replace the - after the tag with a +
 @Memoized
 def calculateVersion() {
-  if (!grgit) {
+  if (!isGitCheckout()) {
     logger.warn("Not building from a git checkout. Version information will not be available. Building from a git checkout is strongly recommended.")
     return 'UNKNOWN+develop'
   }
-  String version = grgit.describe(tags: true)
+  String version = gitOutput('describe', '--tags')
   if (version == null) {
-    return "UNKNOWN+g${grgit.head().abbreviatedId}"
+    return "UNKNOWN+g${gitOutput('rev-parse', '--short=7', 'HEAD')}"
   }
   def versionPattern = ~/^(?<lastVersion>.*)-(?<devVersion>[0-9]+-g[a-z0-9]+)$/
   def matcher = version =~ versionPattern
@@ -506,10 +544,12 @@ def calculateVersion() {
   return version
 }
 
+def publishVersion = rootProject.version
+
 tasks.register('printVersion') {
   doFirst {
     println "specific-version=${specificVersion}"
-    println "publish-version=${project.version}"
+    println "publish-version=${publishVersion}"
   }
 }
 
@@ -526,15 +566,25 @@ tasks.register('releaseAcceptanceTest', Test) {
   dependsOn ':acceptance-tests:acceptanceTest'
 }
 
-def calculateJarName(Project project) {
-  def jarName = project.name
-  def parent = project.parent
+// Subproject build scripts need the implementation version and the jar base name as well.
+// Expose both as extra properties on every project so the lookup stays project-local:
+// resolving a method declared in the root build script from a subproject is deprecated
+// in Gradle 9.6 and will fail in Gradle 10.
+// See https://docs.gradle.org/9.7.1/userguide/upgrading_version_9.html#deprecated_implicit_lookup_in_parent_projects
+def jarNameOf = { Project p ->
+  def jarName = p.name
+  def parent = p.parent
 
   while (parent != null) {
-    if (parent != rootProject) {
+    if (parent != p.rootProject) {
       jarName = parent.name + '-' + jarName
     }
     parent = parent.parent
   }
   return jarName
+}
+
+allprojects { Project p ->
+  ext.buildVersion = specificVersion
+  ext.buildJarName = jarNameOf(p)
 }

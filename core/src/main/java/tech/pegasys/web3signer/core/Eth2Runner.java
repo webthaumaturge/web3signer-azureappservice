@@ -33,6 +33,7 @@ import tech.pegasys.web3signer.core.routes.eth2.Eth2SignExtensionRoute;
 import tech.pegasys.web3signer.core.routes.eth2.Eth2SignRoute;
 import tech.pegasys.web3signer.core.routes.eth2.HighWatermarkRoute;
 import tech.pegasys.web3signer.core.routes.eth2.KeyManagerApiRoute;
+import tech.pegasys.web3signer.core.util.ExecutorShutdownUtil;
 import tech.pegasys.web3signer.keystorage.aws.AwsSecretsManagerProvider;
 import tech.pegasys.web3signer.keystorage.azure.AzureKeyVault;
 import tech.pegasys.web3signer.keystorage.common.MappedResults;
@@ -53,6 +54,7 @@ import tech.pegasys.web3signer.signing.config.SignerLoader;
 import tech.pegasys.web3signer.signing.config.metadata.AbstractArtifactSignerFactory;
 import tech.pegasys.web3signer.signing.config.metadata.BlsArtifactSignerFactory;
 import tech.pegasys.web3signer.signing.config.metadata.SignerOrigin;
+import tech.pegasys.web3signer.signing.config.metadata.parser.SignerParser;
 import tech.pegasys.web3signer.signing.config.metadata.parser.YamlMapperFactory;
 import tech.pegasys.web3signer.signing.config.metadata.parser.YamlSignerParser;
 import tech.pegasys.web3signer.slashingprotection.DbHealthCheck;
@@ -62,15 +64,15 @@ import tech.pegasys.web3signer.slashingprotection.SlashingProtectionContext;
 import tech.pegasys.web3signer.slashingprotection.SlashingProtectionContextFactory;
 import tech.pegasys.web3signer.slashingprotection.SlashingProtectionParameters;
 
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 
-import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.healthchecks.Status;
 import org.apache.logging.log4j.LogManager;
@@ -154,32 +156,40 @@ public class Eth2Runner extends Runner {
 
   @Override
   protected List<ArtifactSignerProvider> createArtifactSignerProvider(
-      final Vertx vertx, final MetricsSystem metricsSystem) {
+      final MetricsSystem metricsSystem) {
+    // create factory instance ONCE at startup
+    final SignerLoader signerLoader = new SignerLoader(baseConfig.getSignerLoaderConfig());
+
+    // Register for cleanup ONCE
+    registerClose(signerLoader);
+
     return List.of(
         new DefaultArtifactSignerProvider(
-            createArtifactSignerSupplier(metricsSystem),
-            slashingProtectionContext.map(PostLoadingValidatorsProcessor::new),
+            createArtifactSignerSupplier(signerLoader, metricsSystem),
+            slashingProtectionContext.<BiConsumer<Set<String>, Set<String>>>map(
+                PostLoadingValidatorsProcessor::new),
             Optional.of(commitBoostApiParameters)));
   }
 
-  private Supplier<Collection<ArtifactSigner>> createArtifactSignerSupplier(
-      final MetricsSystem metricsSystem) {
+  private Supplier<MappedResults<ArtifactSigner>> createArtifactSignerSupplier(
+      final SignerLoader signerLoader, final MetricsSystem metricsSystem) {
     return () -> {
       try (final AzureKeyVaultFactory azureKeyVaultFactory = new AzureKeyVaultFactory()) {
-        final List<ArtifactSigner> signers = new ArrayList<>();
         // load keys from key config files
-        signers.addAll(
-            loadSignersFromKeyConfigFiles(azureKeyVaultFactory, metricsSystem).getValues());
-        // bulk load keys
-        signers.addAll(bulkLoadSigners(azureKeyVaultFactory).getValues());
+        MappedResults<ArtifactSigner> configFileResults =
+            loadSignersFromKeyConfigFiles(signerLoader, azureKeyVaultFactory, metricsSystem);
+        // bulkload keys
+        MappedResults<ArtifactSigner> bulkLoadResults = bulkLoadSigners(azureKeyVaultFactory);
 
-        return signers;
+        return MappedResults.merge(configFileResults, bulkLoadResults);
       }
     };
   }
 
   private MappedResults<ArtifactSigner> loadSignersFromKeyConfigFiles(
-      final AzureKeyVaultFactory azureKeyVaultFactory, final MetricsSystem metricsSystem) {
+      final SignerLoader signerLoader,
+      final AzureKeyVaultFactory azureKeyVaultFactory,
+      final MetricsSystem metricsSystem) {
     try (final HashicorpConnectionFactory hashicorpConnectionFactory =
             new HashicorpConnectionFactory();
         final AwsSecretsManagerProvider awsSecretsManagerProvider =
@@ -193,13 +203,12 @@ public class Eth2Runner extends Runner {
               (args) -> new BlsArtifactSigner(args.getKeyPair(), args.getOrigin(), args.getPath()),
               azureKeyVaultFactory);
 
-      final MappedResults<ArtifactSigner> results =
-          SignerLoader.load(
-              baseConfig.getKeyConfigPath(),
-              new YamlSignerParser(
-                  List.of(artifactSignerFactory),
-                  YamlMapperFactory.createYamlMapper(baseConfig.getKeyStoreConfigFileMaxSize())),
-              baseConfig.keystoreParallelProcessingEnabled());
+      final SignerParser signerParser =
+          new YamlSignerParser(
+              List.of(artifactSignerFactory),
+              YamlMapperFactory.createYamlMapper(baseConfig.getKeyStoreConfigFileMaxSize()));
+      final MappedResults<ArtifactSigner> results = signerLoader.load(signerParser);
+
       registerSignerLoadingHealthCheck(KEYS_CHECK_CONFIG_FILE_LOADING, results);
 
       return results;
@@ -298,17 +307,33 @@ public class Eth2Runner extends Runner {
     final DbHealthCheck dbHealthCheck =
         new DbHealthCheck(
             protectionContext, slashingProtectionParameters.getDbHealthCheckTimeoutMilliseconds());
+    final ScheduledExecutorService dbHealthCheckExecutor =
+        createSingleThreadScheduledExecutor("db-health-check");
 
-    Executors.newScheduledThreadPool(1)
-        .scheduleAtFixedRate(
-            dbHealthCheck,
-            0,
-            slashingProtectionParameters.getDbHealthCheckIntervalMilliseconds(),
-            TimeUnit.MILLISECONDS);
+    dbHealthCheckExecutor.scheduleAtFixedRate(
+        dbHealthCheck,
+        0,
+        slashingProtectionParameters.getDbHealthCheckIntervalMilliseconds(),
+        TimeUnit.MILLISECONDS);
 
     super.registerHealthCheckProcedure(
         SLASHING_PROTECTION_DB,
         promise -> promise.complete(dbHealthCheck.isDbUp() ? Status.OK() : Status.KO()));
+  }
+
+  private ScheduledExecutorService createSingleThreadScheduledExecutor(final String threadName) {
+    final ScheduledExecutorService executorService =
+        Executors.newSingleThreadScheduledExecutor(
+            r -> {
+              final Thread thread = new Thread(r, threadName);
+              thread.setDaemon(true);
+              return thread;
+            });
+
+    // Register for cleanup on shutdown
+    super.registerClose(
+        () -> ExecutorShutdownUtil.shutdownGracefully(executorService, 5, TimeUnit.SECONDS));
+    return executorService;
   }
 
   private void scheduleAndExecuteInitialDbPruning() {
@@ -316,11 +341,14 @@ public class Eth2Runner extends Runner {
       return;
     }
 
+    final ScheduledExecutorService prunerExecutor =
+        createSingleThreadScheduledExecutor("db-pruner");
+
     final DbPrunerRunner dbPrunerRunner =
         new DbPrunerRunner(
             slashingProtectionParameters,
             slashingProtectionContext.get().getPruner(),
-            Executors.newScheduledThreadPool(1));
+            prunerExecutor);
     if (slashingProtectionParameters.isPruningAtBootEnabled()) {
       dbPrunerRunner.execute();
     }

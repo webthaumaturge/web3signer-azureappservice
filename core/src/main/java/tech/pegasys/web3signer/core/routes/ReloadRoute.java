@@ -27,11 +27,22 @@ public class ReloadRoute implements Web3SignerRoute {
 
   @Override
   public void register() {
+    // Create a single handler instance to share state between GET and POST
+    final ReloadHandler reloadHandler =
+        new ReloadHandler(context.getArtifactSignerProviders(), context.reloadWorkerExecutor());
+
+    // Register GET endpoint for status
+    context
+        .getRouter()
+        .route(HttpMethod.GET, RELOAD_PATH)
+        .produces(JSON_HEADER)
+        .handler(reloadHandler);
+
+    // Register POST endpoint for reload operation
     context
         .getRouter()
         .route(HttpMethod.POST, RELOAD_PATH)
         .produces(JSON_HEADER)
-        .handler(new ReloadHandler(context.getArtifactSignerProviders()))
-        .failureHandler(context.getErrorHandler());
+        .handler(reloadHandler);
   }
 }

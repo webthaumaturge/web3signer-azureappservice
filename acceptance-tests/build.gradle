@@ -15,7 +15,7 @@ import java.time.LocalTime
  */
 
 plugins {
-  id "de.undercouch.download" version "5.6.0"
+  id "de.undercouch.download" version "5.7.0"
   id "com.google.osdetector" version "1.7.3"
 }
 
@@ -41,12 +41,13 @@ dependencies {
   testImplementation 'tech.pegasys.teku.internal:spec'
   testImplementation 'tech.pegasys.teku.internal:networks'
   testImplementation 'tech.pegasys.teku.internal:json'
-  testImplementation (group: 'tech.pegasys.teku.internal', name: 'spec', classifier: 'test-fixtures')
-  testImplementation (group: 'tech.pegasys.teku.internal', name: 'bls', classifier: 'test-fixtures')
-  testImplementation (group: 'tech.pegasys.teku.internal', name: 'kzg', classifier: 'test-fixtures')
+  testImplementation 'tech.pegasys.teku.internal:spec::test-fixtures'
+  testImplementation 'tech.pegasys.teku.internal:bls::test-fixtures'
+  testImplementation 'tech.pegasys.teku.internal:kzg::test-fixtures'
   testImplementation 'tech.pegasys.teku.internal:serializer'
   testImplementation 'tech.pegasys.teku.internal:unsigned'
   testImplementation 'tech.pegasys.teku.internal:async'
+  testImplementation 'tech.pegasys.teku.internal:execution-types'
   testImplementation 'io.rest-assured:rest-assured'
   testImplementation 'org.web3j:core'
   testImplementation 'org.web3j:crypto'
@@ -66,6 +67,8 @@ dependencies {
   testImplementation 'com.azure:azure-identity'
   testImplementation 'com.azure:azure-security-keyvault-keys'
   testImplementation 'com.azure:azure-security-keyvault-secrets'
+  testImplementation 'org.testcontainers:testcontainers'
+  testImplementation 'org.wiremock:wiremock'
   testImplementation 'software.amazon.awssdk:auth'
   testImplementation 'software.amazon.awssdk:secretsmanager'
   testImplementation 'software.amazon.awssdk:kms'
@@ -160,6 +163,10 @@ tasks.register('extractVault', Copy) {
 tasks.register('acceptanceTest', Test) {
   dependsOn rootProject.installDist, tasks.named('extractBesu'), tasks.named('extractVault')
 
+  // Gradle 9 dropped implicit convention-based wiring for custom Test tasks; must be explicit.
+  testClassesDirs = sourceSets.test.output.classesDirs
+  classpath = sourceSets.test.runtimeClasspath
+
   inputs.property "integration.date", LocalTime.now() // so it runs at every invocation
   mustRunAfter rootProject.subprojects*.test
   description = 'Runs Web3Signer acceptance tests.'
@@ -168,9 +175,11 @@ tasks.register('acceptanceTest', Test) {
   systemProperty 'acctests.runWeb3SignerAsProcess', 'true'
   systemProperty 'besuInstallDir', layout.buildDirectory.dir("besu").get().asFile.absolutePath
   systemProperty 'vaultBinary', vaultBinary()
+  systemProperty 'azureKeyVaultEmulatorImage', azureKeyVaultEmulatorImage
   // embedded pg initdb needs following
   environment "LC_CTYPE", "en_US.UTF-8"
   environment "LC_ALL", "en_US.UTF-8"
+  jvmArgs '--enable-native-access=ALL-UNNAMED'
   useJUnitPlatform()
   // toggle to show standard out and standard error of the test JVM(s) on the console
   testLogging.showStandardStreams = false
